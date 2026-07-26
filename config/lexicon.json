@@ -1,0 +1,21 @@
+{
+  "positive": [
+    "谢谢", "感谢", "太棒了", "好极了", "没问题", "可以", "好的",
+    "优秀", "厉害", "完美", "成功", "完成了", "搞定了",
+    "thank", "thanks", "great", "awesome", "perfect", "nice",
+    "good", "excellent", "done", "works", "fixed"
+  ],
+  "negative": [
+    "崩溃", "出错", "失败", "报错", "不行", "坏了", "有问题",
+    "烦", "讨厌", "搞不定", "卡住了", "超时",
+    "error", "fail", "broken", "bug", "crash", "timeout",
+    "annoying", "stuck", "doesn't work", "not working"
+  ],
+  "boost": [
+    "非常", "真的", "太", "超级", "极其", "特别", "格外",
+    "very", "really", "super", "extremely", "incredibly", "absolutely"
+  ],
+  "dampen": [
+    "有点", "稍微", "略微", "一些", "somewhat", "a bit", "slightly", "a little"
+  ]
+}
