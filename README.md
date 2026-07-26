@@ -90,20 +90,17 @@ opencode
 
 ### omp
 
+omp 完全兼容 pi，使用相同的安装方式和钩子系统。
+
 ```bash
-# 1. 启用 MCP 服务器
+# 与 pi 相同的安装方式
+pi install npm:cognitive-bridge
+
+# 启用插件
 # ~/.config/omp/config.json
 {
-  "mcpServers": {
-    "cognitive-bridge": {
-      "command": "node",
-      "args": ["path/to/cognitive-bridge/dist/adapters/omp.js"]
-    }
-  }
+  "packages": ["cognitive-bridge"]
 }
-
-# 2. 首次使用自动触发唤醒仪式
-omp
 ```
 
 ## 钩子时序
