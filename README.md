@@ -2,7 +2,7 @@
 
 > 轻量级认知增强插件：为 AI 助手注入身份认知 + 动态 NAP 叙事锚点。
 > 无外部依赖，无需守护进程，纯插件内闭环。
-> 支持平台：pi, opencode, omp
+> 支持平台：pi, omp（完全兼容 pi）, opencode
 
 ## 设计原则
 
@@ -42,27 +42,30 @@
 └─────────────────┬───────────────────────────────┘
                   │
     ┌─────────────┼─────────────┐
-    ▼             ▼             ▼
-┌─────────┐ ┌──────────┐ ┌─────────┐
-│ pi 适配  │ │ opencode │ │ omp 适配 │
-│ adapters│ │ adapters │ │ adapters│
-│  /pi.ts │ │ /opencode│ │  /omp.ts│
-└────┬────┘ └────┬─────┘ └────┬────┘
-     │           │            │
-     ▼           ▼            ▼
-  pi hooks   plugin API    MCP server
+    ▼                           ▼
+┌─────────┐               ┌──────────┐
+│ pi 适配  │               │ opencode │
+│ adapters│               │ adapters │
+│  /pi.ts │               │ /opencode│
+└────┬────┘               └────┬─────┘
+     │                         │
+     ▼                         ▼
+  pi hooks                plugin API
+ (omp 完全兼容 pi)
 ```
 
 ## 平台安装
 
-### pi
+### pi / omp
+
+omp 完全兼容 pi，使用相同的安装方式和钩子系统。
 
 ```bash
 # 1. npm 发布后安装
 pi install npm:cognitive-bridge
 
 # 2. 启用插件（settings.json）
-# ~/.pi/agent/settings.json
+# ~/.pi/agent/settings.json 或 ~/.config/omp/config.json
 {
   "packages": ["cognitive-bridge"]
 }
@@ -86,21 +89,6 @@ npm install cognitive-bridge
 
 # 3. 首次使用自动触发唤醒仪式
 opencode
-```
-
-### omp
-
-omp 完全兼容 pi，使用相同的安装方式和钩子系统。
-
-```bash
-# 与 pi 相同的安装方式
-pi install npm:cognitive-bridge
-
-# 启用插件
-# ~/.config/omp/config.json
-{
-  "packages": ["cognitive-bridge"]
-}
 ```
 
 ## 钩子时序
@@ -148,14 +136,13 @@ turn_end 钩子
 ```
 cognitive-bridge/
 ├── src/
-│   ├── index.ts           # 插件入口（各平台适配器导出）
+│   ├── index.ts           # 插件入口（pi + opencode 导出）
 │   ├── core.ts            # 核心逻辑（平台无关）
 │   ├── types.ts           # 共享类型定义
 │   ├── storage.ts         # persona 持久化
 │   └── adapters/
-│       ├── pi.ts          # pi ExtensionAPI 适配
-│       ├── opencode.ts    # opencode plugin 适配
-│       └── omp.ts         # omp MCP server 适配
+│       ├── pi.ts          # pi ExtensionAPI 适配（omp 兼容）
+│       └── opencode.ts    # opencode plugin 适配
 ├── config/
 │   └── lexicon.json       # 可扩展词典
 ├── package.json
@@ -188,17 +175,6 @@ interface CognitiveBridgeConfig {
 }
 ```
 
-## 与 Trinity 的关系
-
-| 维度 | Trinity（完整版） | cognitive-bridge（简化版） |
-|---|---|---|
-| 运行架构 | 守护进程（trinityd）+ 插件 | 纯插件，无外部进程 |
-| 情绪识别 | 小模型（Qwen3.5-0.8B） | 词典匹配（正则） |
-| 状态机 | 完整 PSI（needs/emotion/modulators） | 两维简化（emotion+arousal） |
-| NAP 叙事 | 小模型生成自然叙事 | 固定模板 + 动态变量 |
-| 持久化 | SQLite（MindGraph） | 单文件 JSON（persona） |
-| 适用场景 | 完整认知系统，需要深度理解 | 轻量增强，快速部署 |
-
 ## 测试
 
 ```bash
@@ -210,7 +186,7 @@ npm test
 ### Phase 1（当前）
 - [x] 架构设计
 - [x] 核心模块实现
-- [x] 三平台适配器
+- [x] 平台适配器（pi + opencode）
 - [x] TypeScript 编译通过
 
 ### Phase 2
@@ -220,6 +196,6 @@ npm test
 - [ ] npm 发布
 
 ### Phase 3
-- [ ] 小模型升级路径（可选：接入 Trinity 小脑）
+- [ ] 小模型升级路径（可选：接入外部推理服务）
 - [ ] 多会话记忆（跨会话人格延续）
 - [ ] 社区词典共享
