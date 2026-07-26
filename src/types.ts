@@ -73,7 +73,7 @@ export interface PluginResult {
 // ── 平台适配器接口 ──
 
 export interface PlatformAdapter {
-  name: string;         // 平台名称（'pi' | 'opencode' | 'omp'）
+  name: string;         // 平台名称（'pi' | 'opencode'）
   
   // 钩子注册
   onInput(handler: (event: PluginEvent) => Promise<PluginResult>): void;
@@ -107,16 +107,3 @@ export interface OpencodePlugin {
   onTurnEnd?: () => Promise<void>;
 }
 
-// ── MCP 消息类型 ──
-
-export interface MCPMessage {
-  method: string;
-  params?: any;
-  id?: number;
-}
-
-export interface MCPResponse {
-  result?: any;
-  error?: { code: number; message: string };
-  id?: number;
-}
