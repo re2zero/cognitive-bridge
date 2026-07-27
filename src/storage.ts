@@ -57,6 +57,8 @@ export function mergeLexicon(target: Lexicon, source: Lexicon): Lexicon {
     negative: dedupAppend(target.negative || [], source.negative || []),
     boost: dedupAppend(target.boost || [], source.boost || []),
     dampen: dedupAppend(target.dampen || [], source.dampen || []),
+    corrective: dedupAppend(target.corrective || [], source.corrective || []),
+    affirmative: dedupAppend(target.affirmative || [], source.affirmative || []),
   };
 }
 

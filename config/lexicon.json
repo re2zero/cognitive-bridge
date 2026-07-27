@@ -17,5 +17,16 @@
   ],
   "dampen": [
     "有点", "稍微", "略微", "一些", "somewhat", "a bit", "slightly", "a little"
+  ],
+  "corrective": [
+    "不对", "错了", "不是", "你错了", "重新", "再看",
+    "你确定", "检查", "验证", "确认一下",
+    "wrong", "incorrect", "not right", "check again",
+    "rethink", "reconsider", "actually", "wait"
+  ],
+  "affirmative": [
+    "对", "正确", "是的", "没错", "就是这样",
+    "right", "correct", "exactly", "yes", "that's it",
+    "perfect", "刚好", "正合"
   ]
 }

@@ -36,8 +36,7 @@ interface PiContext {
 export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge): void {
   const LOG_TAG = '[cog:pi]';
   let pendingAnchor: string | null = null;
-
-  // ── session_start：加载 persona ──
+  let isCodingSession = false;
   pi.on('session_start', (_event: any, _ctx: any) => {
     if (!bridge.awakened) {
       const p = loadPersona();
@@ -72,8 +71,10 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
     }
 
     // 正常流程：情绪识别
+    // 情绪识别 + 反馈检测
     const signal = bridge.lexiconIntent(text);
-    bridge.advanceState(signal);
+    const feedback = bridge.detectFeedback(text);
+    bridge.advanceState(signal, feedback);
     const currentTrend = bridge.emotionTrend();
     console.error(
       `${LOG_TAG} Turn ${bridge.currentState.cycle}: ` +
@@ -83,16 +84,33 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
       `keywords=[${signal.keywords.join(',')}]`
     );
 
+
+    // 编码任务检测
+    if (bridge.isCodingTask(text)) {
+      isCodingSession = true;
+    } else if (isCodingSession && bridge.currentState.cycle > 10) {
+      // 超过 10 轮无编码活动，退出编码模式
+      isCodingSession = false;
+    }
     return { action: 'continue' };
   });
 
   // ── before_agent_start：注入身份 + 设置 NAP 锚点 ──
   pi.on('before_agent_start', async (event: PiEvent, _ctx: PiContext) => {
-    const ret: any = {};
+    const ret: Record<string, unknown> = {};
 
-    // 身份注入
+    // 身份注入（分层）
     if (bridge.awakened) {
-      const identityBlock = bridge.buildIdentityBlock();
+      // 第一轮注入 L1 + L2（完整认知框架）
+      // 后续轮次仅注入 L1（核心身份）
+      const layer = bridge.currentState.cycle === 0 ? 'full' : 'core';
+      let identityBlock = bridge.buildIdentityBlock(layer);
+
+      // 编码任务时追加 L3
+      if (isCodingSession) {
+        identityBlock += '\n\n' + bridge.buildIdentityBlock('coding');
+      }
+
       ret.systemPrompt = identityBlock + '\n\n' + (event.systemPrompt || '');
     }
 

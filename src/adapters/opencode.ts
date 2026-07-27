@@ -11,6 +11,7 @@ import { buildMoodReport } from '../mood.js';
 
 export function createOpencodePlugin(bridge: CognitiveBridge): OpencodePlugin {
   const LOG_TAG = '[cog:opencode]';
+  let isCodingSession = false;
 
   return {
     name: 'cog',
@@ -30,10 +31,17 @@ export function createOpencodePlugin(bridge: CognitiveBridge): OpencodePlugin {
         return { text: report };
       }
 
-      // 情绪识别
-      const signal = bridge.lexiconIntent(message);
-      bridge.advanceState(signal);
+      // 编码任务检测
+      if (bridge.isCodingTask(message)) {
+        isCodingSession = true;
+      } else if (isCodingSession && bridge.currentState.cycle > 10) {
+        isCodingSession = false;
+      }
 
+      // 情绪识别 + 反馈检测
+      const signal = bridge.lexiconIntent(message);
+      const feedback = bridge.detectFeedback(message);
+      bridge.advanceState(signal, feedback);
       const trend = bridge.emotionTrend();
       console.error(
         `${LOG_TAG} Turn ${bridge.currentState.cycle}: ` +
@@ -41,17 +49,20 @@ export function createOpencodePlugin(bridge: CognitiveBridge): OpencodePlugin {
         `trend=${trend.toFixed(2)}`
       );
 
-      // 生成叙事锚点
+      // 生成叙事锚点 + 身份注入
       const narrative = bridge.generateNarrative();
+      const layer = bridge.currentState.cycle <= 1 ? 'full' : 'core';
+      let identityBlock = bridge.buildIdentityBlock(layer);
+      if (isCodingSession) {
+        identityBlock += '\n\n' + bridge.buildIdentityBlock('coding');
+      }
 
       return {
-        text: `[认知状态]\n${narrative}\n[/认知状态]\n\n${message}`
+        text: `${identityBlock}\n\n[认知状态]\n${narrative}\n[/认知状态]\n\n${message}`
       };
     },
 
     async onAssistantMessage(message: string) {
-      // 可选：分析助手回复的情绪
-      // 目前保持简单
       return null;
     },
 

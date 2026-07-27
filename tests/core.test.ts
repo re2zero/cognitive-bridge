@@ -381,3 +381,179 @@ describe('emotionTrend', () => {
     expect(bridge.emotionTrend()).toBeLessThan(0);
   });
 });
+
+// ── 自信度管理 ──
+
+describe('confidence', () => {
+  let bridge: CognitiveBridge;
+
+  beforeEach(() => {
+    bridge = createBridge();
+  });
+
+  it('初始自信度为 0.7', () => {
+    expect(bridge.currentState.confidence).toBe(0.7);
+  });
+
+  it('正面反馈提升自信度', () => {
+    bridge.advanceState({ emotion: 0.5, intensity: 0.5, keywords: [] }, 'positive');
+    expect(bridge.currentState.confidence).toBeGreaterThan(0.7);
+  });
+
+  it('负面反馈降低自信度', () => {
+    bridge.advanceState({ emotion: 0.5, intensity: 0.5, keywords: [] }, 'negative');
+    expect(bridge.currentState.confidence).toBeLessThan(0.7);
+  });
+
+  it('无反馈时缓慢回归基线', () => {
+    bridge.advanceState({ emotion: 0.5, intensity: 0.5, keywords: [] }, 'negative');
+    const afterNegative = bridge.currentState.confidence;
+    // 多次无反馈应回归 0.7
+    for (let i = 0; i < 20; i++) {
+      bridge.advanceState({ emotion: 0, intensity: 0.3, keywords: [] });
+    }
+    expect(bridge.currentState.confidence).toBeGreaterThan(afterNegative);
+  });
+
+  it('自信度有下限 0.1', () => {
+    for (let i = 0; i < 20; i++) {
+      bridge.advanceState({ emotion: 0, intensity: 0, keywords: [] }, 'negative');
+    }
+    expect(bridge.currentState.confidence).toBeGreaterThanOrEqual(0.1);
+  });
+
+  it('自信度有上限 1.0', () => {
+    for (let i = 0; i < 20; i++) {
+      bridge.advanceState({ emotion: 0, intensity: 0, keywords: [] }, 'positive');
+    }
+    expect(bridge.currentState.confidence).toBeLessThanOrEqual(1.0);
+  });
+});
+
+// ── 反馈检测 ──
+
+describe('detectFeedback', () => {
+  let bridge: CognitiveBridge;
+
+  beforeEach(() => {
+    bridge = createBridge();
+  });
+
+  it('纠正词返回 negative', () => {
+    expect(bridge.detectFeedback('不对，你错了')).toBe('negative');
+    expect(bridge.detectFeedback('check again')).toBe('negative');
+  });
+
+  it('确认词返回 positive', () => {
+    expect(bridge.detectFeedback('对，就是这样')).toBe('positive');
+    expect(bridge.detectFeedback('exactly right')).toBe('positive');
+  });
+
+  it('中性输入返回 undefined', () => {
+    expect(bridge.detectFeedback('今天天气不错')).toBeUndefined();
+  });
+
+  it('纠正优先于确认', () => {
+    // 同时包含纠正和确认词时，纠正优先
+    expect(bridge.detectFeedback('不对，但方向正确')).toBe('negative');
+  });
+});
+
+// ── 编码任务检测 ──
+
+describe('isCodingTask', () => {
+  let bridge: CognitiveBridge;
+
+  beforeEach(() => {
+    bridge = createBridge();
+  });
+
+  it('检测函数定义', () => {
+    expect(bridge.isCodingTask('写一个 function')).toBe(true);
+    expect(bridge.isCodingTask('实现一个 class')).toBe(true);
+  });
+
+  it('检测代码修改', () => {
+    expect(bridge.isCodingTask('修改这个 bug')).toBe(true);
+    expect(bridge.isCodingTask('refactor this code')).toBe(true);
+  });
+
+  it('检测文件扩展名', () => {
+    expect(bridge.isCodingTask('看看这个 .ts 文件')).toBe(true);
+    expect(bridge.isCodingTask('修改 .py 脚本')).toBe(true);
+  });
+
+  it('非编码任务返回 false', () => {
+    expect(bridge.isCodingTask('今天天气怎么样')).toBe(false);
+    expect(bridge.isCodingTask('讲个故事')).toBe(false);
+  });
+});
+
+// ── 分层身份块 ──
+
+describe('buildIdentityBlock layered', () => {
+  let bridge: CognitiveBridge;
+
+  beforeEach(() => {
+    bridge = createBridge();
+    bridge.setPersona({
+      name: '银月',
+      creator: '公子',
+      style: '温柔但直接',
+      createdAt: new Date().toISOString()
+    });
+  });
+
+  it('core 层只包含核心身份', () => {
+    const block = bridge.buildIdentityBlock('core');
+    expect(block).toContain('银月');
+    expect(block).toContain('公子');
+    expect(block).toContain('温柔但直接');
+    expect(block).not.toContain('认知循环');
+    expect(block).not.toContain('自信度');
+  });
+
+  it('full 层包含认知框架', () => {
+    const block = bridge.buildIdentityBlock('full');
+    expect(block).toContain('银月');
+    expect(block).toContain('认知循环');
+    expect(block).toContain('自信度');
+    expect(block).toContain('沟通准则');
+  });
+
+  it('coding 层追加编码契约', () => {
+    const block = bridge.buildIdentityBlock('coding');
+    expect(block).toContain('编码准则');
+    expect(block).toContain('修改前先理解');
+    expect(block).toContain('查文档或源码');
+  });
+});
+
+// ── NAP 自信度叙事 ──
+
+describe('generateNarrative with confidence', () => {
+  let bridge: CognitiveBridge;
+
+  beforeEach(() => {
+    bridge = createBridge();
+  });
+
+  it('高自信度时包含把握叙事', () => {
+    // 多次正面反馈提升自信度
+    for (let i = 0; i < 5; i++) {
+      bridge.advanceState({ emotion: 0.5, intensity: 0.3, keywords: [] }, 'positive');
+    }
+    const narrative = bridge.generateNarrative();
+    expect(narrative).toContain('自信度');
+    expect(narrative).toMatch(/把握|确定/);
+  });
+
+  it('低自信度时包含谨慎叙事', () => {
+    for (let i = 0; i < 5; i++) {
+      bridge.advanceState({ emotion: 0, intensity: 0.3, keywords: [] }, 'negative');
+    }
+    const narrative = bridge.generateNarrative();
+    expect(narrative).toContain('自信度');
+    expect(narrative).toMatch(/谨慎|不确定|不够充分/);
+  });
+});

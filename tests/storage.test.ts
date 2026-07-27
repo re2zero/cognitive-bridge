@@ -12,6 +12,8 @@ const BASE: Lexicon = {
   negative: ['崩溃', 'error'],
   boost: ['非常', 'very'],
   dampen: ['有点', 'a bit'],
+  corrective: ['不对', 'wrong'],
+  affirmative: ['对', 'yes'],
 };
 
 describe('mergeLexicon', () => {
@@ -117,5 +119,19 @@ describe('mergeLexicon', () => {
     };
     const result = mergeLexicon(BASE, bigSource);
     expect(result.positive.length).toBe(BASE.positive.length + 100);
+  });
+
+  it('corrective 和 affirmative 类别也支持合并', () => {
+    const source: Lexicon = {
+      positive: [],
+      negative: [],
+      boost: [],
+      dampen: [],
+      corrective: ['重新', 'incorrect'],
+      affirmative: ['正确', 'exactly'],
+    };
+    const result = mergeLexicon(BASE, source);
+    expect(result.corrective).toEqual([...BASE.corrective!, '重新', 'incorrect']);
+    expect(result.affirmative).toEqual([...BASE.affirmative!, '正确', 'exactly']);
   });
 });

@@ -6,11 +6,19 @@
 
 // ── 身份 ──
 
+export interface CognitiveProfile {
+  thinkingCycle: string[];         // 认知循环步骤
+  confidenceRules: string[];       // 自信度管理规则
+  codingContract: string[];        // 编码契约
+  communicationRules: string[];    // 沟通规则
+}
+
 export interface Persona {
-  name: string;       // 助手名字（如 "银月"）
-  creator: string;    // 创造者名字（如 "公子"）
-  style: string;      // 对话风格（如 "温柔但直接"）
-  createdAt: string;  // 觉醒时间（ISO 8601）
+  name: string;           // 助手名字（如 "银月"）
+  creator: string;        // 创造者名字（如 "公子"）
+  style: string;          // 对话风格（如 "温柔但直接"）
+  createdAt: string;      // 觉醒时间（ISO 8601）
+  cognitiveProfile?: CognitiveProfile;  // 认知配置（可选）
 }
 
 // ── 情绪 ──
@@ -26,17 +34,20 @@ export interface EmotionSignal {
 export interface Lexicon {
   positive: string[];
   negative: string[];
-  boost: string[];      // 强化词（"非常"、"真的"）
-  dampen: string[];     // 弱化词（"有点"、"稍微"）
+  boost: string[];          // 强化词（"非常"、"真的"）
+  dampen: string[];         // 弱化词（"有点"、"稍微"）
+  corrective?: string[];    // 纠正词（"不对"、"错了"）
+  affirmative?: string[];   // 确认词（"对"、"正确"）
 }
 
 // ── 认知状态 ──
 
 export interface CognitiveState {
-  emotion: number;      // [-1.0, 1.0]，当前情绪效价
-  arousal: number;      // [0, 1]，当前激活度
-  cycle: number;        // 对话轮次
-  lastUpdate: number;   // 最后更新时间戳
+  emotion: number;        // [-1.0, 1.0]，当前情绪效价
+  arousal: number;        // [0, 1]，当前激活度
+  confidence: number;     // [0, 1]，自信度
+  cycle: number;          // 对话轮次
+  lastUpdate: number;     // 最后更新时间戳
 }
 
 // ── 对话窗口 ──
