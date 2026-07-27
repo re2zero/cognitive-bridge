@@ -2,7 +2,7 @@
  * pi 适配器：将 CognitiveBridge 接入 pi 的 ExtensionAPI。
  * 
  * 使用标准工具注册 API：pi.registerTool()
- * 使用钩子系统：input, before_agent_start, context, turn_end
+ * 使用钩子系统：input, before_agent_start, turn_end
  */
 import type { Persona } from '../types.js';
 import type { DiaryEntry } from '../memory.js';
@@ -56,9 +56,7 @@ function buildDiaryContext(diary: DiaryEntry[]): string {
 
 export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge): void {
   const LOG_TAG = '[cog:pi]';
-  let pendingAnchor: string | null = null;
   let isCodingSession = false;
-  let diaryContextInjected = false;
 
   // ── 注册记忆工具 ──
 
@@ -417,7 +415,7 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
     return { action: 'continue' };
   });
 
-  // ── before_agent_start：注入身份 + 设置 NAP 锚点 ──
+  // ── before_agent_start：注入身份 + NAP 锚点 ──
   pi.on('before_agent_start', async (event: PiEvent, _ctx: PiContext) => {
     const ret: Record<string, unknown> = {};
 
@@ -436,39 +434,16 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
         (pi as any)._cogDiaryContext = null;
       }
 
+      // NAP 锚点注入到系统提示词
+      if (bridge.currentState.cycle > 0) {
+        const narrative = bridge.generateNarrative();
+        identityBlock += `\n\n[认知状态]\n${narrative}\n[/认知状态]`;
+      }
+
       ret.systemPrompt = identityBlock + '\n\n' + (event.systemPrompt || '');
     }
 
-    // NAP 锚点
-    if (bridge.currentState.cycle > 0) {
-      const narrative = bridge.generateNarrative();
-      pendingAnchor = narrative;
-    }
-
     return Object.keys(ret).length > 0 ? ret : undefined;
-  });
-
-  // ── context：prepend 锚点到最新用户消息 ──
-  pi.on('context', async (event: PiEvent, _ctx: PiContext) => {
-    if (pendingAnchor === null) return undefined;
-    const anchor = pendingAnchor;
-    pendingAnchor = null;
-
-    const messages = event.messages;
-    if (!Array.isArray(messages)) return undefined;
-
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (m?.role === 'user') {
-        const content = typeof m.content === 'string' ? m.content : '';
-        messages[i] = {
-          ...m,
-          content: `[认知状态]\n${anchor}\n[/认知状态]\n\n${content}`
-        };
-        return { messages };
-      }
-    }
-    return undefined;
   });
 
   // ── turn_end：记录完成 + 冲突检查 ──
