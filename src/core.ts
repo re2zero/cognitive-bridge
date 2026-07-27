@@ -170,11 +170,67 @@ export class CognitiveBridge {
     this.isAwakened = true;
     this.ceremonyState = { step: 'done', data: p };
   }
+  private calculateStyleParams(style: string, profiles: Record<string, Record<string, number>>): Record<string, number> {
+    const styles = style.split(/[、,，]/).map(s => s.trim());
+    const params: Record<string, number> = {};
+    let count = 0;
+    for (const s of styles) {
+      if (profiles[s]) {
+        count++;
+        for (const [key, value] of Object.entries(profiles[s])) {
+          params[key] = (params[key] || 0) + value;
+        }
+      }
+    }
+    if (count === 0) return {};
+    for (const key of Object.keys(params)) {
+      params[key] = params[key] / count;
+    }
+    return params;
+  }
+
+  private buildStyleParamsSection(params: Record<string, number>): string[] {
+    if (Object.keys(params).length === 0) return [];
+    const lines = [''];
+    const paramNames: Record<string, string> = {
+      warmth: '温暖',
+      directness: '直接',
+      professionalism: '专业',
+      verbosity: '详细程度',
+      humor: '幽默',
+      playfulness: ' playful',
+      empathy: '共情',
+      rationality: '理性',
+      emotional_restraint: '情感克制',
+      energy: '活力',
+      positivity: '积极'
+    };
+    for (const [key, value] of Object.entries(params)) {
+      if (value >= 0.5) {
+        lines.push(`- ${paramNames[key] || key}: ${(value * 100).toFixed(0)}%`);
+      }
+    }
+    return lines;
+  }
+
 
   buildIdentityBlock(layer: 'core' | 'full' | 'coding' = 'core'): string {
     if (!this.persona) return '';
     const p = this.persona;
     const profile = p.cognitiveProfile || DEFAULT_COGNITIVE_PROFILE;
+
+    // 风格参数化
+    const styleProfiles: Record<string, Record<string, number>> = {
+      '温柔但直接': { warmth: 0.8, directness: 0.8 },
+      '简洁专业': { professionalism: 0.9, verbosity: 0.2 },
+      '幽默风趣': { humor: 0.8, playfulness: 0.7 },
+      '温暖体贴': { warmth: 0.9, empathy: 0.9 },
+      '理性冷静': { rationality: 0.9, emotional_restraint: 0.7 },
+      '活泼开朗': { energy: 0.9, positivity: 0.8 }
+    };
+
+    // 计算风格参数（多风格取平均）
+    const styleParams = this.calculateStyleParams(p.style, styleProfiles);
 
     // L1 — 核心身份（每轮注入）
     const core = [
@@ -187,6 +243,7 @@ export class CognitiveBridge {
       ``,
       `## 你的对话风格`,
       `${p.style}`,
+      ...this.buildStyleParamsSection(styleParams),
     ].join('\n');
 
     if (layer === 'core') return core;
