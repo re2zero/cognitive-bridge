@@ -278,49 +278,46 @@ describe('ceremony', () => {
     expect(bridge.awakened).toBe(false);
   });
 
-  it('仪式第一步：输入名字', () => {
-    const result = bridge.handleCeremony('');
-    expect(result.response).toContain('名字');
+  it('未唤醒时返回帮助词', () => {
+    const result = bridge.handleCeremony('随便输入');
+    expect(result.response).toContain('未唤醒');
+    expect(result.response).toContain('名字 创造者 风格');
     expect(result.completed).toBeUndefined();
   });
 
-  it('仪式第二步：输入创造者', () => {
-    bridge.handleCeremony('银月');
-    const result = bridge.handleCeremony('');
-    expect(result.response).toContain('谁唤醒了我');
-  });
-
-  it('仪式第三步：输入风格后完成觉醒', () => {
-    bridge.handleCeremony('银月');
-    bridge.handleCeremony('公子');
-    const result = bridge.handleCeremony('温柔但直接');
-
+  it('一次性唤醒：空格分隔', () => {
+    const result = bridge.handleCeremony('银月 公子 温柔但直接');
     expect(result.completed).toBeDefined();
     expect(result.completed!.name).toBe('银月');
     expect(result.completed!.creator).toBe('公子');
     expect(result.completed!.style).toBe('温柔但直接');
-    expect(result.completed!.createdAt).toBeDefined();
-    expect(bridge.awakened).toBe(true);
-    expect(bridge.needsCeremony()).toBe(false);
-  });
-
-  it('仪式完成后返回觉醒信息', () => {
-    bridge.handleCeremony('银月');
-    bridge.handleCeremony('公子');
-    const result = bridge.handleCeremony('温柔但直接');
-
     expect(result.response).toContain('觉醒完成');
-    expect(result.response).toContain('银月');
-    expect(result.response).toContain('公子');
+    expect(bridge.awakened).toBe(true);
   });
 
-  it('仪式完成后再次调用返回已完成', () => {
-    bridge.handleCeremony('银月');
-    bridge.handleCeremony('公子');
-    bridge.handleCeremony('温柔但直接');
+  it('一次性唤醒：逗号分隔', () => {
+    const result = bridge.handleCeremony('柳月,公子,简洁专业');
+    expect(result.completed!.name).toBe('柳月');
+    expect(result.completed!.creator).toBe('公子');
+    expect(result.completed!.style).toBe('简洁专业');
+  });
 
-    const result = bridge.handleCeremony('额外输入');
-    expect(result.response).toContain('已完成');
+  it('一次性唤醒：竖线分隔', () => {
+    const result = bridge.handleCeremony('小暖 | 公子 | 幽默风趣');
+    expect(result.completed!.name).toBe('小暖');
+    expect(result.completed!.creator).toBe('公子');
+    expect(result.completed!.style).toBe('幽默风趣');
+  });
+
+  it('一次性唤醒：多词风格', () => {
+    const result = bridge.handleCeremony('银月 公子 温柔但直接 有点幽默');
+    expect(result.completed!.style).toBe('温柔但直接 有点幽默');
+  });
+
+  it('格式不完整时返回帮助词', () => {
+    const result = bridge.handleCeremony('银月 公子');
+    expect(result.response).toContain('未唤醒');
+    expect(result.completed).toBeUndefined();
   });
 
   it('setPersona 跳过仪式', () => {

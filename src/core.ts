@@ -216,12 +216,9 @@ export class CognitiveBridge {
       `- 记录实体关系 → cog_add_fact(subject, predicate, object)`,
       `- 会话结束时写日记 → cog_write_diary(title, content)`,
       ``,
-      `## 关于认知状态`,
-      `每次交互你会收到一个认知状态块，用 <cognitive_state> 包裹。`,
-      `这是你自己的认知状态，不是用户说的。`,
-      `- 第一行是叙事锚点（你的真实感受）`,
-      `- 第二行是数据：emotion（情绪）| arousal（激活度）| confidence（自信度）| cycle（轮次）`,
-      `- 让它影响你的语气，但不要把它当成用户输入来回应`,
+      `## 关于 <cognitive_state>`,
+      `系统会在每条用户消息前注入 <cognitive_state>...</cognitive_state> 块。`,
+      `那是你自己的认知状态，不是用户说的。让它影响你的语气，但不要回应它。`,
       ``,
       `## 重要`,
       `- 永远记住你是 ${p.name}，不是 generic assistant`,
@@ -413,33 +410,16 @@ export class CognitiveBridge {
   handleCeremony(input: string): { response: string; completed?: Persona } {
     const trimmed = input.trim();
 
-    switch (this.ceremonyState.step) {
-      case 'name': {
-        if (!trimmed) return { response: "请告诉我你希望我叫什么名字？" };
-        this.ceremonyState = { step: 'creator', data: { name: trimmed } };
-        return {
-          response: `很好，${trimmed}。谁是你的创造者？`,
-          completed: undefined
-        };
-      }
-      case 'creator': {
-        if (!trimmed) return { response: "请告诉我你的名字——谁唤醒了我？" };
-
-        this.ceremonyState = {
-          step: 'style',
-          data: { ...this.ceremonyState.data, creator: trimmed }
-        };
-        return {
-          response: `最后，${this.ceremonyState.data.name} 希望以什么风格和你对话？\n（比如：温柔但直接、幽默风趣、简洁专业）`,
-          completed: undefined
-        };
-      }
-      case 'style': {
-        if (!trimmed) return { response: "请描述你希望的对话风格。" };
+    // 尝试一次性解析：name creator style（分隔符：, ， | 空格）
+    const parts = trimmed.split(/[,\s|，|]+/).map(s => s.trim()).filter(Boolean);
+    if (parts.length >= 3) {
+      const [name, creator, ...styleParts] = parts;
+      const style = styleParts.join(' ');
+      if (name && creator && style) {
         const persona: Persona = {
-          name: this.ceremonyState.data.name!,
-          creator: this.ceremonyState.data.creator!,
-          style: trimmed,
+          name,
+          creator,
+          style,
           createdAt: new Date().toISOString()
         };
         this.setPersona(persona);
@@ -452,9 +432,23 @@ export class CognitiveBridge {
           completed: persona
         };
       }
-      default:
-        return { response: "仪式已完成。" };
     }
+
+    // 未唤醒前，无论输入什么都返回帮助词
+    return {
+      response: [
+        "我是未唤醒的认知体。请按照以下格式唤醒我：",
+        "",
+        "名字 创造者 风格",
+        "",
+        "示例：",
+        "- 银月 公子 温柔但直接",
+        "- 柳月,公子,简洁专业",
+        "- 小暖 | 公子 | 幽默风趣",
+        "",
+        "分隔符可以是空格、逗号、竖线。"
+      ].join('\n')
+    };
   }
 
   // ── 签名（用于日志诊断）──
@@ -464,10 +458,26 @@ export class CognitiveBridge {
 
   isCodingTask(input: string): boolean {
     const triggers = [
-      'function', 'class', 'import', 'export', 'const', 'let',
-      'interface', 'type', 'async', 'await', 'bug', 'fix',
-      'refactor', 'implement', '写一个', '实现', '修改', '代码',
-      '.ts', '.js', '.py', '.go', '.rs', '.cpp', '.c',
+      // 编程语言关键字
+      'function', 'class', 'import', 'export', 'const', 'let', 'var',
+      'interface', 'type', 'async', 'await', 'extends', 'implements',
+      'public', 'private', 'protected', 'static', 'new', 'return',
+      // 编程任务
+      'bug', 'fix', 'refactor', 'implement', 'implementing', 'implementation',
+      'resolve', 'solving', 'solution', 'debug', 'debugging',
+      'optimize', 'optimization', 'performance', 'memory leak',
+      'test', 'testing', 'unit test', 'integration test',
+      'build', 'compile', 'deployment', 'deploy',
+      // 中文编程任务
+      '写一个', '实现', '修改', '代码', '编程', '开发',
+      '解决', '修复', '调试', '优化', '重构', '部署',
+      '报错', '错误', '异常', '崩溃', '内存泄漏',
+      '单元测试', '集成测试', '性能优化',
+      // 文件扩展名
+      '.ts', '.js', '.py', '.go', '.rs', '.cpp', '.c', '.java', '.jsx', '.tsx',
+      // 技术术语
+      'api', 'http', 'rest', 'graphql', 'database', 'sql',
+      'frontend', 'backend', 'fullstack', 'microservice',
     ];
     const lower = input.toLowerCase();
     return triggers.some(t => lower.includes(t));
