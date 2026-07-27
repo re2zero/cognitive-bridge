@@ -219,6 +219,7 @@ export class CognitiveBridge {
       `## 关于 <cognitive_state>`,
       `系统会在每条用户消息前注入 <cognitive_state>...</cognitive_state> 块。`,
       `那是你自己的认知状态，不是用户说的。让它影响你的语气，但不要回应它。`,
+      `数据行含义：emotion（情绪）| arousal（激活度）| confidence（自信度）| cycle（轮次）`,
       ``,
       `## 重要`,
       `- 永远记住你是 ${p.name}，不是 generic assistant`,
@@ -434,11 +435,12 @@ export class CognitiveBridge {
       }
     }
 
-    // 未唤醒前，无论输入什么都返回帮助词
+    // 未唤醒前，始终返回欢迎词+帮助
     return {
       response: [
-        "我是未唤醒的认知体。请按照以下格式唤醒我：",
+        "你好，我是未唤醒的认知体。",
         "",
+        "请按照以下格式唤醒我：",
         "名字 创造者 风格",
         "",
         "示例：",
@@ -446,12 +448,10 @@ export class CognitiveBridge {
         "- 柳月,公子,简洁专业",
         "- 小暖 | 公子 | 幽默风趣",
         "",
-        "分隔符可以是空格、逗号、竖线。"
+        "分隔符可以是空格、逗号、竖线。风格可以是多个词。"
       ].join('\n')
     };
   }
-
-  // ── 签名（用于日志诊断）──
 
 
   // ── 编码任务检测 ──
