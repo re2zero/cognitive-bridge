@@ -1,4 +1,4 @@
-# cognitive-bridge
+# cog
 
 > 轻量级认知增强插件：为 AI 助手注入身份认知 + 动态 NAP 叙事锚点。
 > 无外部依赖，无需守护进程，纯插件内闭环。
@@ -62,12 +62,12 @@ omp 完全兼容 pi，使用相同的安装方式和钩子系统。
 
 ```bash
 # 1. npm 发布后安装
-pi install npm:cognitive-bridge
+pi install npm:cog
 
 # 2. 启用插件（settings.json）
 # ~/.pi/agent/settings.json 或 ~/.config/omp/config.json
 {
-  "packages": ["cognitive-bridge"]
+  "packages": ["cog"]
 }
 
 # 3. 首次使用自动触发唤醒仪式
@@ -79,12 +79,12 @@ pi
 ```bash
 # 1. npm 安装到 opencode 插件目录
 cd ~/.config/opencode/plugins
-npm install cognitive-bridge
+npm install cog
 
 # 2. 启用插件
 # ~/.config/opencode/opencode.jsonc
 {
-  "plugin": ["cognitive-bridge"]
+  "plugin": ["cog"]
 }
 
 # 3. 首次使用自动触发唤醒仪式
@@ -134,7 +134,7 @@ turn_end 钩子
 ## 文件结构
 
 ```
-cognitive-bridge/
+cog/
 ├── src/
 │   ├── index.ts           # 插件入口（pi + opencode 导出）
 │   ├── core.ts            # 核心逻辑（平台无关）
@@ -167,7 +167,7 @@ cognitive-bridge/
 ### 核心参数
 
 ```typescript
-interface CognitiveBridgeConfig {
+interface CogConfig {
   windowSize?: number;        // 对话窗口容量（默认 8）
   emotionBlendAlpha?: number; // 情绪混合系数（默认 0.3）
   emotionDecay?: number;      // 指数衰减（默认 0.7）

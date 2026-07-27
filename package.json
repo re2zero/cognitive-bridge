@@ -1,12 +1,12 @@
 {
-  "name": "pi-cognitive-bridge",
+  "name": "cog",
   "version": "0.1.0",
   "description": "轻量级认知增强插件：为 pi 注入身份认知 + 动态 NAP 叙事锚点",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "pi-cognitive-bridge": "dist/cli.js"
+    "cog": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",

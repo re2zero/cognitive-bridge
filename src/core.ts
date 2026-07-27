@@ -11,12 +11,13 @@ import type {
   CognitiveState,
   WindowEntry,
   CeremonyState,
-  CognitiveBridgeConfig
+  CogConfig
 } from './types.js';
+import { loadLexicon, mergeLexicon } from './storage.js';
 
 // ── 默认配置 ──
 
-const DEFAULT_CONFIG: CognitiveBridgeConfig = {
+const DEFAULT_CONFIG: CogConfig = {
   windowSize: 8,
   emotionBlendAlpha: 0.3,
   emotionDecay: 0.7,
@@ -50,7 +51,7 @@ const DEFAULT_LEXICON: Lexicon = {
 // ── 认知桥核心 ──
 
 export class CognitiveBridge {
-  private config: CognitiveBridgeConfig;
+  private config: CogConfig;
   private lexicon: Lexicon;
   private persona: Persona | null = null;
   private isAwakened: boolean = false;
@@ -63,9 +64,19 @@ export class CognitiveBridge {
   };
   private window: WindowEntry[] = [];
 
-  constructor(config?: Partial<CognitiveBridgeConfig>) {
+  constructor(config?: Partial<CogConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.lexicon = this.config.lexicon || DEFAULT_LEXICON;
+
+    // 词典加载优先级：默认 → 外部文件（内置+用户） → 编程配置
+    let merged = { ...DEFAULT_LEXICON };
+    const external = loadLexicon();
+    if (external) {
+      merged = mergeLexicon(merged, external);
+    }
+    if (this.config.lexicon) {
+      merged = mergeLexicon(merged, this.config.lexicon);
+    }
+    this.lexicon = merged;
   }
 
   // ── 状态访问 ──
@@ -255,6 +266,7 @@ export class CognitiveBridge {
     switch (this.ceremonyState.step) {
       case 'name': {
         if (!trimmed) return { response: "请告诉我你希望我叫什么名字？" };
+        this.ceremonyState = { step: 'creator', data: { name: trimmed } };
         return {
           response: `很好，${trimmed}。谁是你的创造者？`,
           completed: undefined
@@ -262,6 +274,10 @@ export class CognitiveBridge {
       }
       case 'creator': {
         if (!trimmed) return { response: "请告诉我你的名字——谁唤醒了我？" };
+        this.ceremonyState = {
+          step: 'style',
+          data: { ...this.ceremonyState.data, creator: trimmed }
+        };
         return {
           response: `最后，${this.ceremonyState.data.name} 希望以什么风格和你对话？\n（比如：温柔但直接、幽默风趣、简洁专业）`,
           completed: undefined

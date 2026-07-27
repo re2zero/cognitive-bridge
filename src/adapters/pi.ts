@@ -6,6 +6,7 @@
 import type { Persona } from '../types.js';
 import { CognitiveBridge } from '../core.js';
 import { loadPersona, savePersona } from '../storage.js';
+import { buildMoodReport } from '../mood.js';
 
 // ── pi 扩展 API 类型（简化声明）──
 
@@ -33,7 +34,7 @@ interface PiContext {
 // ── 适配器实现 ──
 
 export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge): void {
-  const LOG_TAG = '[cognitive-bridge:pi]';
+  const LOG_TAG = '[cog:pi]';
   let pendingAnchor: string | null = null;
 
   // ── session_start：加载 persona ──
@@ -61,15 +62,24 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
       return { action: 'handled' };
     }
 
+    // /mood 命令
+    if (text.trim().toLowerCase() === '/mood') {
+      const state = bridge.currentState;
+      const trend = bridge.emotionTrend();
+      const report = buildMoodReport(state, trend, bridge.currentPersona);
+      ctx?.ui?.notify?.(report, 'info');
+      return { action: 'handled' };
+    }
+
     // 正常流程：情绪识别
     const signal = bridge.lexiconIntent(text);
     bridge.advanceState(signal);
-    const trend = bridge.emotionTrend();
+    const currentTrend = bridge.emotionTrend();
     console.error(
       `${LOG_TAG} Turn ${bridge.currentState.cycle}: ` +
       `emotion=${signal.emotion.toFixed(2)}, ` +
       `intensity=${signal.intensity.toFixed(2)}, ` +
-      `trend=${trend.toFixed(2)}, ` +
+      `trend=${currentTrend.toFixed(2)}, ` +
       `keywords=[${signal.keywords.join(',')}]`
     );
 

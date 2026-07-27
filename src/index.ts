@@ -1,5 +1,5 @@
 /**
- * cognitive-bridge：轻量级认知增强插件
+ * cog：轻量级认知增强插件
  * 
  * 为 AI 助手注入身份认知 + 动态 NAP 叙事锚点。
  * 无外部依赖，无需守护进程，纯插件内闭环。
@@ -17,7 +17,7 @@ export { loadPersona, savePersona } from './storage.js';
 
 // ── pi 适配入口 ──
 
-export default function piCognitiveBridge(pi: any) {
+export default function piCog(pi: any) {
   const bridge = new CognitiveBridge();
   const existingPersona = loadPersona();
   if (existingPersona) {
@@ -28,7 +28,7 @@ export default function piCognitiveBridge(pi: any) {
 
 // ── opencode 适配入口 ──
 
-export function createOpencodeCognitiveBridge() {
+export function createOpencodeCog() {
   const bridge = new CognitiveBridge();
   const existingPersona = loadPersona();
   if (existingPersona) {

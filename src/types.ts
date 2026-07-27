@@ -90,7 +90,7 @@ export interface PlatformAdapter {
 
 // ── 配置 ──
 
-export interface CognitiveBridgeConfig {
+export interface CogConfig {
   windowSize?: number;
   emotionBlendAlpha?: number;
   emotionDecay?: number;

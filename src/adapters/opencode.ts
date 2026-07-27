@@ -6,20 +6,28 @@
  */
 import type { OpencodePlugin } from '../types.js';
 import { CognitiveBridge } from '../core.js';
-
+import { buildMoodReport } from '../mood.js';
 // ── 适配器实现 ──
 
 export function createOpencodePlugin(bridge: CognitiveBridge): OpencodePlugin {
-  const LOG_TAG = '[cognitive-bridge:opencode]';
+  const LOG_TAG = '[cog:opencode]';
 
   return {
-    name: 'cognitive-bridge',
+    name: 'cog',
 
     async onUserMessage(message: string) {
       // 仪式检查
       if (bridge.needsCeremony()) {
         const result = bridge.handleCeremony(message);
         return { text: result.response };
+      }
+
+      // /mood 命令
+      if (message.trim().toLowerCase() === '/mood') {
+        const state = bridge.currentState;
+        const trend = bridge.emotionTrend();
+        const report = buildMoodReport(state, trend, bridge.currentPersona);
+        return { text: report };
       }
 
       // 情绪识别
