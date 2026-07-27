@@ -309,9 +309,15 @@ describe('ceremony', () => {
     expect(result.completed!.style).toBe('幽默风趣');
   });
 
-  it('一次性唤醒：多词风格', () => {
-    const result = bridge.handleCeremony('银月 公子 温柔但直接 有点幽默');
-    expect(result.completed!.style).toBe('温柔但直接 有点幽默');
+  it('一次性唤醒：多风格', () => {
+    const result = bridge.handleCeremony('银月 公子 温柔但直接 幽默风趣');
+    expect(result.completed!.style).toBe('温柔但直接、幽默风趣');
+  });
+
+  it('非预设风格被过滤', () => {
+    const result = bridge.handleCeremony('银月 公子 自定义风格');
+    expect(result.response).toContain('未唤醒');
+    expect(result.completed).toBeUndefined();
   });
 
   it('格式不完整时返回帮助词', () => {

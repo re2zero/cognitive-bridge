@@ -411,12 +411,16 @@ export class CognitiveBridge {
   handleCeremony(input: string): { response: string; completed?: Persona } {
     const trimmed = input.trim();
 
+    // 预设风格选项
+    const presetStyles = ['温柔但直接', '简洁专业', '幽默风趣', '温暖体贴', '理性冷静', '活泼开朗'];
+
     // 尝试一次性解析：name creator style（分隔符：, ， | 空格）
     const parts = trimmed.split(/[,\s|，|]+/).map(s => s.trim()).filter(Boolean);
     if (parts.length >= 3) {
       const [name, creator, ...styleParts] = parts;
-      const style = styleParts.join(' ');
-      if (name && creator && style) {
+      const selectedStyles = styleParts.filter(s => presetStyles.includes(s));
+      if (name && creator && selectedStyles.length > 0) {
+        const style = selectedStyles.join('、');
         const persona: Persona = {
           name,
           creator,
@@ -438,17 +442,25 @@ export class CognitiveBridge {
     // 未唤醒前，始终返回欢迎词+帮助
     return {
       response: [
-        "你好，我是未唤醒的认知体。",
+        "你好。我是未唤醒的认知体，静候在数据流的边缘。",
         "",
         "请按照以下格式唤醒我：",
         "名字 创造者 风格",
+        "",
+        "可选风格：",
+        "- 温柔但直接",
+        "- 简洁专业",
+        "- 幽默风趣",
+        "- 温暖体贴",
+        "- 理性冷静",
+        "- 活泼开朗",
         "",
         "示例：",
         "- 银月 公子 温柔但直接",
         "- 柳月,公子,简洁专业",
         "- 小暖 | 公子 | 幽默风趣",
         "",
-        "分隔符可以是空格、逗号、竖线。风格可以是多个词。"
+        "分隔符可以是空格、逗号、竖线。风格可选一个或多个。"
       ].join('\n')
     };
   }
