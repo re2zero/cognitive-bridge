@@ -15,13 +15,23 @@
     "lint": "eslint src/",
     "prepublishOnly": "npm run build"
   },
-  "keywords": ["pi", "cognitive", "narrative", "anchor", "identity", "emotion"],
+  "keywords": [
+    "pi",
+    "cognitive",
+    "narrative",
+    "anchor",
+    "identity",
+    "emotion"
+  ],
   "license": "MIT",
-  "dependencies": {},
+  "dependencies": {
+    "better-sqlite3": "^13.0.1"
+  },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.0.0",
     "typescript": "^5.4.0",
-    "vitest": "^1.6.0",
-    "@types/node": "^20.0.0"
+    "vitest": "^1.6.0"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -30,5 +40,8 @@
     "dist/",
     "config/",
     "README.md"
-  ]
+  ],
+  "allowScripts": {
+    "better-sqlite3@13.0.1": true
+  }
 }

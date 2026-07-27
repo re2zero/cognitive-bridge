@@ -15,6 +15,18 @@ import type {
   CogConfig
 } from './types.js';
 import { loadLexicon, mergeLexicon } from './storage.js';
+import {
+  MemoryStore,
+  Memory,
+  MemoryInput,
+  RecallOptions,
+  Triple,
+  AddFactOptions,
+  DiaryEntry,
+  WriteDiaryOptions,
+  Conflict,
+  MemoryStats
+} from './memory.js';
 
 // ── 默认配置 ──
 
@@ -111,6 +123,11 @@ export class CognitiveBridge {
   private taskProgress: { current: number; total: number; description: string } | null = null;
   private window: WindowEntry[] = [];
 
+  // ── 记忆系统 ──
+
+  private memoryStore: MemoryStore;
+  private sessionId: string;
+
   constructor(config?: Partial<CogConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
 
@@ -124,7 +141,13 @@ export class CognitiveBridge {
       merged = mergeLexicon(merged, this.config.lexicon);
     }
     this.lexicon = merged;
+
+    // 初始化记忆系统
+    this.memoryStore = new MemoryStore();
+    this.sessionId = this.generateSessionId();
+    this.memoryStore.startSession(this.sessionId);
   }
+
 
   // ── 状态访问 ──
 
@@ -182,11 +205,26 @@ export class CognitiveBridge {
       `## 沟通准则`,
       ...profile.communicationRules.map(s => `- ${s}`),
       ``,
+      `## 记忆能力`,
+      `你拥有跨会话持久记忆能力。以下场景请主动使用记忆工具：`,
+      `- 完成重要决策后 → 保存决策记忆（type: decision）`,
+      `- 修复 bug 后 → 保存修复记忆（type: bugfix）`,
+      `- 发现非显而易见的知识 → 保存发现记忆（type: discovery）`,
+      `- 建立新的约定或模式 → 保存模式记忆（type: pattern）`,
+      `- 了解用户偏好 → 保存偏好记忆（type: preference）`,
+      `- 需要回忆过去的决策或经验 → 搜索记忆`,
+      ``,
+      `记忆工具使用格式（在回复中直接调用）：`,
+      `- 保存记忆：[memorize]type=decision&topic=architecture&title=简短标题&content=内容[/memorize]`,
+      `- 搜索记忆：[recall]query=搜索关键词[/recall]`,
+      `- 添加事实：[addFact]subject=实体&predicate=关系&object=实体[/addFact]`,
+      `- 写日记：[writeDiary]title=标题&content=内容[/writeDiary]`,
+      ``,
       `## 重要`,
       `- 永远记住你是 ${p.name}，不是 generic assistant`,
       `- 你的身份在每次对话前都会被注入，保证连续性`,
+      `- 你的记忆是持久的，跨会话有效`,
     ].join('\n');
-
     if (layer === 'full') return core + cognitive;
 
     // L3 — 编码契约（按需注入）
@@ -446,5 +484,137 @@ export class CognitiveBridge {
   anchorSignature(text: string): string {
     const dataLine = text.split('\n').find(l => l.includes('emotion=')) || text;
     return dataLine.trim();
+  }
+
+  // ── 记忆 API ──
+
+  /**
+   * 保存记忆。
+   * 集成情绪权重：当前认知状态的情绪强度影响记忆权重。
+   */
+  memorize(input: Omit<MemoryInput, 'emotionWeight'>): Memory {
+    const emotionWeight = this.calculateMemoryWeight();
+    return this.memoryStore.memorize({
+      ...input,
+      emotionWeight
+    }, this.sessionId);
+  }
+
+  /**
+   * 搜索记忆。
+   */
+  recall(query: string, options?: RecallOptions): Memory[] {
+    return this.memoryStore.recall(query, options);
+  }
+
+  /**
+   * 添加知识图谱事实。
+   */
+  addFact(
+    subject: string,
+    predicate: string,
+    object: string,
+    options?: AddFactOptions
+  ): Triple {
+    return this.memoryStore.addFact(subject, predicate, object, options);
+  }
+
+  /**
+   * 查询知识图谱事实。
+   */
+  queryFacts(entity: string, asOf?: string): Triple[] {
+    return this.memoryStore.queryFacts(entity, asOf);
+  }
+
+  /**
+   * 写会话日记。
+   */
+  writeDiary(title: string, content: string, options?: WriteDiaryOptions): DiaryEntry {
+    const peakEmotion = this.calculatePeakEmotion();
+    return this.memoryStore.writeDiary(this.sessionId, title, content, {
+      emotionAvg: this.cognitiveState.emotion,
+      emotionPeak: peakEmotion,
+      ...options
+    });
+  }
+
+  /**
+   * 读取最近日记。
+   */
+  readDiary(limit?: number): DiaryEntry[] {
+    return this.memoryStore.readDiary(limit);
+  }
+
+  /**
+   * 获取待判断冲突。
+   */
+  getPendingConflicts(): Conflict[] {
+    return this.memoryStore.getPendingConflicts();
+  }
+
+  /**
+   * 判断冲突。
+   */
+  judgeConflict(
+    conflictId: string,
+    relation: Conflict['relation'],
+    reason?: string,
+    evidence?: string
+  ): void {
+    this.memoryStore.judgeConflict(conflictId, relation, reason, evidence);
+  }
+
+  /**
+   * 获取记忆统计。
+   */
+  getMemoryStats(): MemoryStats {
+    return this.memoryStore.stats();
+  }
+
+  /**
+   * 获取会话 ID。
+   */
+  getSessionId(): string {
+    return this.sessionId;
+  }
+
+  // ── 记忆辅助方法 ──
+
+  /**
+   * 计算记忆权重（基于当前认知状态）。
+   * 高情绪强度 + 高激活度 = 高权重记忆。
+   */
+  private calculateMemoryWeight(): number {
+    const state = this.cognitiveState;
+    const emotionIntensity = Math.abs(state.emotion);
+    const arousal = state.arousal;
+
+    // 情绪强度权重 60%，激活度权重 40%
+    return Math.min(1.0, emotionIntensity * 0.6 + arousal * 0.4);
+  }
+
+  /**
+   * 计算会话峰值情绪。
+   */
+  private calculatePeakEmotion(): number {
+    if (this.window.length === 0) return 0;
+    return Math.max(...this.window.map(e => Math.abs(e.emotion)));
+  }
+
+  /**
+   * 生成会话 ID。
+   */
+  private generateSessionId(): string {
+    return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  // ── 会话结束钩子 ──
+
+  /**
+   * 会话结束时调用。
+   */
+  onSessionEnd(): void {
+    this.memoryStore.endSession(this.sessionId);
+    this.memoryStore.close();
   }
 }
