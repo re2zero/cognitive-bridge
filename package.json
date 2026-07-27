@@ -47,6 +47,7 @@
   },
   "files": [
     "dist/",
+    "src/",
     "config/",
     "README.md"
   ],
