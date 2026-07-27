@@ -415,7 +415,7 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
     return { action: 'continue' };
   });
 
-  // ── before_agent_start：注入身份 + NAP 锚点 ──
+  // ── before_agent_start：注入身份 + 设置 NAP 锚点 ──
   pi.on('before_agent_start', async (event: PiEvent, _ctx: PiContext) => {
     const ret: Record<string, unknown> = {};
 
@@ -434,19 +434,40 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
         (pi as any)._cogDiaryContext = null;
       }
 
-      // NAP 锚点注入到系统提示词
-      if (bridge.currentState.cycle > 0) {
-        const narrative = bridge.generateNarrative();
-        identityBlock += `\n\n[认知状态]\n${narrative}\n[/认知状态]`;
-      }
-
       ret.systemPrompt = identityBlock + '\n\n' + (event.systemPrompt || '');
+    }
+
+    // NAP 锚点（动态，通过 context 钩子注入到用户消息）
+    if (bridge.currentState.cycle > 0) {
+      const narrative = bridge.generateNarrative();
+      (pi as any)._cogPendingAnchor = narrative;
     }
 
     return Object.keys(ret).length > 0 ? ret : undefined;
   });
 
-  // ── turn_end：记录完成 + 冲突检查 ──
+  // ── context：注入 NAP 锚点到最新用户消息 ──
+  pi.on('context', async (event: PiEvent, _ctx: PiContext) => {
+    const anchor = (pi as any)._cogPendingAnchor;
+    if (!anchor) return undefined;
+    (pi as any)._cogPendingAnchor = null;
+
+    const messages = event.messages;
+    if (!Array.isArray(messages)) return undefined;
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m?.role === 'user') {
+        const content = typeof m.content === 'string' ? m.content : '';
+        messages[i] = {
+          ...m,
+          content: `<cognitive_state>\n${anchor}\n</cognitive_state>\n\n${content}`
+        };
+        return { messages };
+      }
+    }
+    return undefined;
+  });
   pi.on('turn_end', async (event: PiEvent, ctx: PiContext) => {
     console.error(`${LOG_TAG} Turn ${bridge.currentState.cycle} complete`);
 
