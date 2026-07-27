@@ -64,7 +64,7 @@ omp 完全兼容 pi，使用相同的安装方式和钩子系统。
 
 ```bash
 # 1. 安装插件
-pi install npm:cog
+pi install npm:@re2zero/cog
 
 # 2. 启用插件（settings.json）
 # ~/.pi/agent/settings.json 或 ~/.config/omp/config.json
@@ -81,7 +81,7 @@ pi
 ```bash
 # 1. 安装到 opencode 插件目录
 cd ~/.config/opencode/plugins
-npm install cog
+npm install @re2zero/cog
 
 # 2. 启用插件
 # ~/.config/opencode/opencode.jsonc
