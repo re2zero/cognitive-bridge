@@ -201,16 +201,9 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
     return undefined;
   });
 
-  // ── turn_end：记录完成 + 工具调用 + 冲突检查 ──
+  // ── turn_end：记录完成 + 冲突检查 ──
   pi.on('turn_end', async (event: PiEvent, ctx: PiContext) => {
     console.error(`${LOG_TAG} Turn ${bridge.currentState.cycle} complete`);
-
-    // 拦截 LLM 回复中的工具调用
-    const message = event?.message;
-    if (message) {
-      const text = typeof message.content === 'string' ? message.content : '';
-      processToolCalls(text, bridge, ctx);
-    }
 
     // 检查待判断冲突
     const conflicts = bridge.getPendingConflicts();
@@ -227,104 +220,3 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
   console.error(`${LOG_TAG} Extension loaded. Awakened: ${bridge.awakened}`);
 }
 
-// ── 工具调用处理 ──
-
-/**
- * 解析并执行 LLM 回复中的工具调用。
- */
-function processToolCalls(text: string, bridge: any, ctx: PiContext): void {
-  const LOG_TAG = '[cog:tools]';
-
-  // memorize 工具
-  const memorizeMatch = text.match(/\[memorize\]([\s\S]*?)\[\/memorize\]/);
-  if (memorizeMatch) {
-    try {
-      const params = parseParams(memorizeMatch[1]);
-      const memory = bridge.memorize({
-        type: params.type || 'decision',
-        topic: params.topic || 'general',
-        title: params.title || 'Untitled',
-        content: params.content || '',
-        topicKey: params.topicKey
-      });
-      console.error(`${LOG_TAG} Memory saved: ${memory.title}`);
-      ctx?.ui?.notify?.(`[cog] 记忆已保存：${memory.title}`, 'info');
-    } catch (e: any) {
-      console.error(`${LOG_TAG} memorize error: ${e.message}`);
-    }
-  }
-
-  // recall 工具
-  const recallMatch = text.match(/\[recall\]([\s\S]*?)\[\/recall\]/);
-  if (recallMatch) {
-    try {
-      const params = parseParams(recallMatch[1]);
-      const results = bridge.recall(params.query || '', {
-        topic: params.topic,
-        type: params.type,
-        limit: parseInt(params.limit) || 5
-      });
-      console.error(`${LOG_TAG} Recall: ${results.length} results for "${params.query}"`);
-      if (results.length > 0) {
-        const summary = results.map((r: any) => `- ${r.title} (${r.createdAt.slice(0, 10)})`).join('\n');
-        ctx?.ui?.notify?.(`[cog] 找到 ${results.length} 条相关记忆：\n${summary}`, 'info');
-      }
-    } catch (e: any) {
-      console.error(`${LOG_TAG} recall error: ${e.message}`);
-    }
-  }
-
-  // addFact 工具
-  const addFactMatch = text.match(/\[addFact\]([\s\S]*?)\[\/addFact\]/);
-  if (addFactMatch) {
-    try {
-      const params = parseParams(addFactMatch[1]);
-      const fact = bridge.addFact(params.subject, params.predicate, params.object);
-      console.error(`${LOG_TAG} Fact added: ${fact.subject} → ${fact.predicate} → ${fact.object}`);
-    } catch (e: any) {
-      console.error(`${LOG_TAG} addFact error: ${e.message}`);
-    }
-  }
-
-  // writeDiary 工具
-  const writeDiaryMatch = text.match(/\[writeDiary\]([\s\S]*?)\[\/writeDiary\]/);
-  if (writeDiaryMatch) {
-    try {
-      const params = parseParams(writeDiaryMatch[1]);
-      const entry = bridge.writeDiary(params.title || 'Session diary', params.content || '');
-      console.error(`${LOG_TAG} Diary written: ${entry.title}`);
-    } catch (e: any) {
-      console.error(`${LOG_TAG} writeDiary error: ${e.message}`);
-    }
-  }
-}
-
-/**
- * 解析工具参数（URL query string 格式）。
- */
-function parseParams(paramString: string): Record<string, string> {
-  const params: Record<string, string> = {};
-
-  // 支持两种格式：
-  // 1. type=decision&topic=architecture
-  // 2. type: decision\n topic: architecture
-
-  // 尝试 URL query string 格式
-  const urlParams = new URLSearchParams(paramString);
-  for (const [key, value] of urlParams.entries()) {
-    if (value) params[key] = value;
-  }
-
-  // 如果 URL 格式没有解析到内容，尝试 key: value 格式
-  if (!params.content) {
-    const lines = paramString.split('\n');
-    for (const line of lines) {
-      const match = line.match(/^\s*(\w+)\s*:\s*(.+)\s*$/);
-      if (match) {
-        params[match[1]] = match[2].trim();
-      }
-    }
-  }
-
-  return params;
-}

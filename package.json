@@ -27,7 +27,16 @@
   "dependencies": {
     "better-sqlite3": "^13.0.1"
   },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=0.0.1"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@opencode-ai/plugin": "^1.18.6",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.0.0",
     "typescript": "^5.4.0",

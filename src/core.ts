@@ -206,25 +206,22 @@ export class CognitiveBridge {
       ...profile.communicationRules.map(s => `- ${s}`),
       ``,
       `## 记忆能力`,
-      `你拥有跨会话持久记忆能力。以下场景请主动使用记忆工具：`,
-      `- 完成重要决策后 → 保存决策记忆（type: decision）`,
-      `- 修复 bug 后 → 保存修复记忆（type: bugfix）`,
-      `- 发现非显而易见的知识 → 保存发现记忆（type: discovery）`,
-      `- 建立新的约定或模式 → 保存模式记忆（type: pattern）`,
-      `- 了解用户偏好 → 保存偏好记忆（type: preference）`,
-      `- 需要回忆过去的决策或经验 → 搜索记忆`,
-      ``,
-      `记忆工具使用格式（在回复中直接调用）：`,
-      `- 保存记忆：[memorize]type=decision&topic=architecture&title=简短标题&content=内容[/memorize]`,
-      `- 搜索记忆：[recall]query=搜索关键词[/recall]`,
-      `- 添加事实：[addFact]subject=实体&predicate=关系&object=实体[/addFact]`,
-      `- 写日记：[writeDiary]title=标题&content=内容[/writeDiary]`,
+      `你拥有跨会话持久记忆能力，通过标准工具调用。以下场景请主动使用记忆工具：`,
+      `- 完成重要决策后 → cog_memorize(type=decision)`,
+      `- 修复 bug 后 → cog_memorize(type=bugfix)`,
+      `- 发现非显而易见的知识 → cog_memorize(type=discovery)`,
+      `- 建立新的约定或模式 → cog_memorize(type=pattern)`,
+      `- 了解用户偏好 → cog_memorize(type=preference)`,
+      `- 需要回忆过去的决策或经验 → cog_recall(query=...)`,
+      `- 记录实体关系 → cog_add_fact(subject, predicate, object)`,
+      `- 会话结束时写日记 → cog_write_diary(title, content)`,
       ``,
       `## 重要`,
       `- 永远记住你是 ${p.name}，不是 generic assistant`,
       `- 你的身份在每次对话前都会被注入，保证连续性`,
       `- 你的记忆是持久的，跨会话有效`,
     ].join('\n');
+
     if (layer === 'full') return core + cognitive;
 
     // L3 — 编码契约（按需注入）
@@ -505,6 +502,20 @@ export class CognitiveBridge {
    */
   recall(query: string, options?: RecallOptions): Memory[] {
     return this.memoryStore.recall(query, options);
+  }
+
+  /**
+   * 按 topic_key 获取记忆。
+   */
+  getByTopicKey(topicKey: string): Memory[] {
+    return this.memoryStore.getByTopicKey(topicKey);
+  }
+
+  /**
+   * 获取实体时间线。
+   */
+  timeline(entity: string): Triple[] {
+    return this.memoryStore.timeline(entity);
   }
 
   /**

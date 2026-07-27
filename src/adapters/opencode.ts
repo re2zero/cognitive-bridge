@@ -1,91 +1,330 @@
 /**
  * opencode 适配器：将 CognitiveBridge 接入 opencode 的插件系统。
  * 
- * opencode 使用 plugins/ 目录，插件是 TypeScript 文件。
+ * 使用标准工具注册 API，LLM 通过标准工具调用格式调用记忆工具。
  */
-import type { OpencodePlugin } from '../types.js';
-import type { DiaryEntry } from '../memory.js';
+import type { Plugin, ToolDefinition } from '@opencode-ai/plugin';
+import { tool } from '@opencode-ai/plugin';
 import { CognitiveBridge } from '../core.js';
+import { loadPersona, savePersona } from '../storage.js';
 import { buildMoodReport } from '../mood.js';
+import type { DiaryEntry, MemoryType } from '../memory.js';
 
 // ── 辅助函数 ──
 
 function buildDiaryContext(diary: DiaryEntry[]): string {
   if (diary.length === 0) return '';
-
   const lines = [
     '## 最近会话记录',
-    ...diary.map(d => {
-      const date = d.createdAt.slice(0, 10);
-      return `- ${date}: ${d.title}`;
-    }),
+    ...diary.map(d => `- ${d.createdAt.slice(0, 10)}: ${d.title}`),
     ''
   ];
-
   return lines.join('\n');
 }
 
-// ── 适配器实现 ──
+function extractText(content: any): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.map(p => {
+      if (typeof p === 'string') return p;
+      if (p?.type === 'text') return p.text || '';
+      return '';
+    }).join('\n');
+  }
+  return '';
+}
 
-export function createOpencodePlugin(bridge: CognitiveBridge): OpencodePlugin {
+// ── 工具定义 ──
+
+function createMemoryTools(bridge: CognitiveBridge): Record<string, ToolDefinition> {
+  return {
+    cog_memorize: tool({
+      description: 'Save a persistent memory. Use after important decisions, bug fixes, discoveries, patterns, or learning user preferences.',
+      args: {
+        type: tool.schema.enum(['decision', 'bugfix', 'discovery', 'pattern', 'preference'] as const)
+          .describe('Memory type'),
+        topic: tool.schema.string()
+          .describe('Topic category, e.g. architecture, auth, deployment'),
+        title: tool.schema.string()
+          .describe('Short title, verb-first, e.g. "Fixed N+1 query in UserList"'),
+        content: tool.schema.string()
+          .describe('Content in [What]/[Why]/[Where]/[Learned] format'),
+        topicKey: tool.schema.string().optional()
+          .describe('Stable key for evolving topics, e.g. architecture/auth-model'),
+        context: tool.schema.string().optional()
+          .describe('Optional additional context')
+      },
+      execute: async (args) => {
+        const memory = bridge.memorize(args);
+        return `Memory saved: ${memory.title} (id: ${memory.id.slice(0, 8)})`;
+      }
+    }),
+
+    cog_recall: tool({
+      description: 'Search memories by keyword. Use when you need to recall past decisions, experiences, or knowledge.',
+      args: {
+        query: tool.schema.string()
+          .describe('Search query, supports phrases and keywords'),
+        topic: tool.schema.string().optional()
+          .describe('Filter by topic'),
+        type: tool.schema.enum(['decision', 'bugfix', 'discovery', 'pattern', 'preference'] as const).optional()
+          .describe('Filter by type'),
+        limit: tool.schema.number().optional()
+          .describe('Max results (default: 10)')
+      },
+      execute: async (args) => {
+        const results = bridge.recall(args.query, {
+          topic: args.topic,
+          type: args.type,
+          limit: args.limit ?? 10
+        });
+        if (results.length === 0) {
+          return `No memories found for "${args.query}"`;
+        }
+        const items = results.map((r: any) =>
+          `- [${r.type}] ${r.title} (${r.createdAt.slice(0, 10)})\n  ${r.content.slice(0, 200)}`
+        ).join('\n\n');
+        return `Found ${results.length} memory(ies):\n\n${items}`;
+      }
+    }),
+
+    cog_get_by_topic_key: tool({
+      description: 'Get all memories for an evolving topic by its stable key.',
+      args: {
+        topicKey: tool.schema.string()
+          .describe('Topic key, e.g. architecture/auth-model')
+      },
+      execute: async (args) => {
+        const memories = bridge.getByTopicKey(args.topicKey);
+        if (memories.length === 0) {
+          return `No memories found for topic key "${args.topicKey}"`;
+        }
+        const items = memories.map((m: any) =>
+          `- ${m.title} (${m.createdAt.slice(0, 10)})\n  ${m.content.slice(0, 200)}`
+        ).join('\n\n');
+        return `Found ${memories.length} memory(ies) for "${args.topicKey}":\n\n${items}`;
+      }
+    }),
+
+    cog_add_fact: tool({
+      description: 'Add a fact to the knowledge graph. Use to record entity relationships.',
+      args: {
+        subject: tool.schema.string()
+          .describe('Subject entity, e.g. "银月", "cog", "公子"'),
+        predicate: tool.schema.string()
+          .describe('Relationship, e.g. works_on, created_by, prefers, knows, decided'),
+        object: tool.schema.string()
+          .describe('Object entity')
+      },
+      execute: async (args) => {
+        const fact = bridge.addFact(args.subject, args.predicate, args.object);
+        return `Fact added: ${fact.subject} → ${fact.predicate} → ${fact.object}`;
+      }
+    }),
+
+    cog_query_facts: tool({
+      description: 'Query current facts about an entity from the knowledge graph.',
+      args: {
+        entity: tool.schema.string()
+          .describe('Entity to query, e.g. "银月", "cog"')
+      },
+      execute: async (args) => {
+        const facts = bridge.queryFacts(args.entity);
+        if (facts.length === 0) {
+          return `No facts found about "${args.entity}"`;
+        }
+        const items = facts.map((f: any) =>
+          `- ${f.subject} → ${f.predicate} → ${f.object}${f.validTo ? ` (ended: ${f.validTo.slice(0, 10)})` : ' (current)'}`
+        ).join('\n');
+        return `Facts about "${args.entity}":\n${items}`;
+      }
+    }),
+
+    cog_timeline: tool({
+      description: 'Get the chronological timeline of facts about an entity.',
+      args: {
+        entity: tool.schema.string()
+          .describe('Entity to get timeline for')
+      },
+      execute: async (args) => {
+        const timeline = bridge.timeline(args.entity);
+        if (timeline.length === 0) {
+          return `No timeline found for "${args.entity}"`;
+        }
+        const items = timeline.map((f: any) =>
+          `- ${f.validFrom.slice(0, 10)}: ${f.subject} → ${f.predicate} → ${f.object}${f.validTo ? ` → ended ${f.validTo.slice(0, 10)}` : ''}`
+        ).join('\n');
+        return `Timeline for "${args.entity}":\n${items}`;
+      }
+    }),
+
+    cog_write_diary: tool({
+      description: 'Write a session diary entry. Use at the end of a significant session.',
+      args: {
+        title: tool.schema.string()
+          .describe('Short title for the diary entry'),
+        content: tool.schema.string()
+          .describe('Diary content in AAAK format: ## Goal / ## Discoveries / ## Accomplished / ## Next Steps')
+      },
+      execute: async (args) => {
+        const entry = bridge.writeDiary(args.title, args.content);
+        return `Diary written: ${entry.title}`;
+      }
+    }),
+
+    cog_read_diary: tool({
+      description: 'Read recent diary entries to recall past sessions.',
+      args: {
+        limit: tool.schema.number().optional()
+          .describe('Number of recent entries (default: 5)')
+      },
+      execute: async (args) => {
+        const entries = bridge.readDiary(args.limit ?? 5);
+        if (entries.length === 0) {
+          return 'No diary entries found';
+        }
+        const items = entries.map((e: any) =>
+          `- ${e.createdAt.slice(0, 10)}: ${e.title}\n  ${e.content.slice(0, 300)}`
+        ).join('\n\n');
+        return `Recent diary entries:\n\n${items}`;
+      }
+    }),
+
+    cog_get_conflicts: tool({
+      description: 'Get pending memory conflicts that need judgment.',
+      args: {},
+      execute: async () => {
+        const conflicts = bridge.getPendingConflicts();
+        if (conflicts.length === 0) {
+          return 'No pending conflicts';
+        }
+        const items = conflicts.map((c: any) =>
+          `- [${c.id.slice(0, 8)}] ${c.relation} (confidence: ${c.confidence.toFixed(2)})\n  new: ${c.newMemoryId.slice(0, 8)} vs existing: ${c.existingMemoryId.slice(0, 8)}`
+        ).join('\n');
+        return `Pending conflicts:\n${items}`;
+      }
+    }),
+
+    cog_judge_conflict: tool({
+      description: 'Judge a memory conflict by specifying the relationship.',
+      args: {
+        conflictId: tool.schema.string()
+          .describe('Conflict ID'),
+        relation: tool.schema.enum(['supersedes', 'conflicts_with', 'compatible', 'related', 'scoped', 'not_conflict'] as const)
+          .describe('Relationship'),
+        reason: tool.schema.string().optional()
+          .describe('Reason for the judgment')
+      },
+      execute: async (args) => {
+        bridge.judgeConflict(args.conflictId, args.relation, args.reason);
+        return `Conflict judged: ${args.relation}`;
+      }
+    }),
+
+    cog_stats: tool({
+      description: 'Get memory statistics.',
+      args: {},
+      execute: async () => {
+        const stats = bridge.getMemoryStats();
+        return [
+          '## Memory Statistics',
+          `- Total memories: ${stats.totalMemories}`,
+          `- By type:`,
+          `  - decisions: ${stats.memoriesByType.decision}`,
+          `  - bugfixes: ${stats.memoriesByType.bugfix}`,
+          `  - discoveries: ${stats.memoriesByType.discovery}`,
+          `  - patterns: ${stats.memoriesByType.pattern}`,
+          `  - preferences: ${stats.memoriesByType.preference}`,
+          `- Diary entries: ${stats.totalDiaryEntries}`,
+          `- Knowledge graph facts: ${stats.currentFacts} current, ${stats.expiredFacts} expired`,
+          `- Pending conflicts: ${stats.pendingConflicts}`,
+          `- Database size: ${(stats.databaseSize / 1024).toFixed(1)} KB`
+        ].join('\n');
+      }
+    })
+  };
+}
+
+// ── 插件导出 ──
+
+export const CogPlugin: Plugin = async (ctx) => {
+  const bridge = new CognitiveBridge();
+  const existingPersona = loadPersona();
+  if (existingPersona) {
+    bridge.setPersona(existingPersona);
+  }
+
   const LOG_TAG = '[cog:opencode]';
   let isCodingSession = false;
   let diaryContextInjected = false;
 
   return {
-    name: 'cog',
+    tool: createMemoryTools(bridge),
 
-    async onUserMessage(message: string) {
+    event: async ({ event }) => {
+      if (event.type === 'session.created') {
+        const info = (event.properties as any)?.info;
+        const sessionId = info?.id;
+        if (sessionId) {
+          console.error(`${LOG_TAG} Session created: ${sessionId}`);
+        }
+      }
+    },
+
+    'chat.message': async (input, output) => {
+      const text = extractText(output.message);
+
       // 仪式检查
       if (bridge.needsCeremony()) {
-        const result = bridge.handleCeremony(message);
-        return { text: result.response };
+        const result = bridge.handleCeremony(text);
+        if (result.completed) {
+          savePersona(result.completed);
+        }
+        output.parts = [{ type: 'text', text: result.response } as any];
+        return;
       }
 
       // /mood 命令
-      if (message.trim().toLowerCase() === '/mood') {
+      if (text.trim().toLowerCase() === '/mood') {
         const state = bridge.currentState;
         const trend = bridge.emotionTrend();
         const report = buildMoodReport(state, trend, bridge.currentPersona);
-        return { text: report };
+        output.parts = [{ type: 'text', text: report } as any];
+        return;
       }
 
       // /memory 命令
-      if (message.trim().toLowerCase() === '/memory') {
+      if (text.trim().toLowerCase() === '/memory') {
         const stats = bridge.getMemoryStats();
         const report = [
-          '## 记忆统计',
-          `- 总记忆数：${stats.totalMemories}`,
-          `- 决策：${stats.memoriesByType.decision}`,
-          `- Bug 修复：${stats.memoriesByType.bugfix}`,
-          `- 发现：${stats.memoriesByType.discovery}`,
-          `- 模式：${stats.memoriesByType.pattern}`,
-          `- 偏好：${stats.memoriesByType.preference}`,
-          `- 日记：${stats.totalDiaryEntries}`,
-          `- 知识图谱事实：${stats.currentFacts}`,
-          `- 待判断冲突：${stats.pendingConflicts}`,
-          `- 数据库大小：${(stats.databaseSize / 1024).toFixed(1)} KB`
+          '## Memory Statistics',
+          `- Total memories: ${stats.totalMemories}`,
+          `- By type:`,
+          `  - decisions: ${stats.memoriesByType.decision}`,
+          `  - bugfixes: ${stats.memoriesByType.bugfix}`,
+          `  - discoveries: ${stats.memoriesByType.discovery}`,
+          `  - patterns: ${stats.memoriesByType.pattern}`,
+          `  - preferences: ${stats.memoriesByType.preference}`,
+          `- Diary entries: ${stats.totalDiaryEntries}`,
+          `- Knowledge graph facts: ${stats.currentFacts} current`,
+          `- Pending conflicts: ${stats.pendingConflicts}`,
+          `- Database size: ${(stats.databaseSize / 1024).toFixed(1)} KB`
         ].join('\n');
-        return { text: report };
+        output.parts = [{ type: 'text', text: report } as any];
+        return;
       }
 
       // 编码任务检测
-      if (bridge.isCodingTask(message)) {
+      if (bridge.isCodingTask(text)) {
         isCodingSession = true;
       } else if (isCodingSession && bridge.currentState.cycle > 10) {
         isCodingSession = false;
       }
 
-      // 情绪识别 + 反馈检测
-      const signal = bridge.lexiconIntent(message);
-      const feedback = bridge.detectFeedback(message);
+      // 情绪识别
+      const signal = bridge.lexiconIntent(text);
+      const feedback = bridge.detectFeedback(text);
       bridge.advanceState(signal, feedback);
-      const trend = bridge.emotionTrend();
-      console.error(
-        `${LOG_TAG} Turn ${bridge.currentState.cycle}: ` +
-        `emotion=${signal.emotion.toFixed(2)}, ` +
-        `trend=${trend.toFixed(2)}`
-      );
 
       // 生成叙事锚点 + 身份注入
       const narrative = bridge.generateNarrative();
@@ -104,110 +343,53 @@ export function createOpencodePlugin(bridge: CognitiveBridge): OpencodePlugin {
         diaryContextInjected = true;
       }
 
-      return {
-        text: `${identityBlock}\n\n[认知状态]\n${narrative}\n[/认知状态]\n\n${message}`
-      };
+      // 注入到 parts
+      const systemText = `${identityBlock}\n\n[认知状态]\n${narrative}\n[/认知状态]`;
+      output.parts.unshift({
+        type: 'text',
+        text: systemText
+      } as any);
     },
 
-    async onAssistantMessage(message: string) {
-      // 拦截工具调用
-      processToolCalls(message, bridge);
-      return null;
-    },
-
-    async onTurnEnd() {
-      console.error(`${LOG_TAG} Turn ${bridge.currentState.cycle} complete`);
-
-      // 检查待判断冲突
-      const conflicts = bridge.getPendingConflicts();
-      if (conflicts.length > 0) {
-        console.error(
-          `${LOG_TAG} Pending conflicts: ${conflicts.length}`
-        );
+    'tool.execute.after': async (input, output) => {
+      if (input.tool.startsWith('cog_')) {
+        const conflicts = bridge.getPendingConflicts();
+        if (conflicts.length > 0) {
+          output.metadata = {
+            ...output.metadata,
+            cog_conflicts: conflicts.length
+          };
+        }
       }
     }
   };
-}
+};
 
+// ── 向后兼容导出 ──
 
-// ── 工具调用处理 ──
-
-function processToolCalls(text: string, bridge: any): void {
-  const LOG_TAG = '[cog:tools]';
-
-  // memorize
-  const memorizeMatch = text.match(/\[memorize\]([\s\S]*?)\[\/memorize\]/);
-  if (memorizeMatch) {
-    try {
-      const params = parseParams(memorizeMatch[1]);
-      const memory = bridge.memorize({
-        type: params.type || 'decision',
-        topic: params.topic || 'general',
-        title: params.title || 'Untitled',
-        content: params.content || '',
-        topicKey: params.topicKey
-      });
-      console.error(`${LOG_TAG} Memory saved: ${memory.title}`);
-    } catch (e: any) {
-      console.error(`${LOG_TAG} memorize error: ${e.message}`);
-    }
+export function createOpencodeCog() {
+  console.error('[cog] createOpencodeCog is deprecated. Use CogPlugin directly.');
+  const bridge = new CognitiveBridge();
+  const existingPersona = loadPersona();
+  if (existingPersona) {
+    bridge.setPersona(existingPersona);
   }
-
-  // recall
-  const recallMatch = text.match(/\[recall\]([\s\S]*?)\[\/recall\]/);
-  if (recallMatch) {
-    try {
-      const params = parseParams(recallMatch[1]);
-      const results = bridge.recall(params.query || '', {
-        topic: params.topic,
-        type: params.type,
-        limit: parseInt(params.limit) || 5
-      });
-      console.error(`${LOG_TAG} Recall: ${results.length} results for "${params.query}"`);
-    } catch (e: any) {
-      console.error(`${LOG_TAG} recall error: ${e.message}`);
-    }
-  }
-
-  // addFact
-  const addFactMatch = text.match(/\[addFact\]([\s\S]*?)\[\/addFact\]/);
-  if (addFactMatch) {
-    try {
-      const params = parseParams(addFactMatch[1]);
-      const fact = bridge.addFact(params.subject, params.predicate, params.object);
-      console.error(`${LOG_TAG} Fact added: ${fact.subject} → ${fact.predicate} → ${fact.object}`);
-    } catch (e: any) {
-      console.error(`${LOG_TAG} addFact error: ${e.message}`);
-    }
-  }
-
-  // writeDiary
-  const writeDiaryMatch = text.match(/\[writeDiary\]([\s\S]*?)\[\/writeDiary\]/);
-  if (writeDiaryMatch) {
-    try {
-      const params = parseParams(writeDiaryMatch[1]);
-      const entry = bridge.writeDiary(params.title || 'Session diary', params.content || '');
-      console.error(`${LOG_TAG} Diary written: ${entry.title}`);
-    } catch (e: any) {
-      console.error(`${LOG_TAG} writeDiary error: ${e.message}`);
-    }
-  }
-}
-
-function parseParams(paramString: string): Record<string, string> {
-  const params: Record<string, string> = {};
-  const urlParams = new URLSearchParams(paramString);
-  for (const [key, value] of urlParams.entries()) {
-    if (value) params[key] = value;
-  }
-  if (!params.content) {
-    const lines = paramString.split('\n');
-    for (const line of lines) {
-      const match = line.match(/^\s*(\w+)\s*:\s*(.+)\s*$/);
-      if (match) {
-        params[match[1]] = match[2].trim();
+  return {
+    name: 'cog',
+    async onUserMessage(message: string) {
+      if (bridge.needsCeremony()) {
+        const result = bridge.handleCeremony(message);
+        return { text: result.response };
       }
+      const signal = bridge.lexiconIntent(message);
+      const feedback = bridge.detectFeedback(message);
+      bridge.advanceState(signal, feedback);
+      const narrative = bridge.generateNarrative();
+      const layer = bridge.currentState.cycle <= 1 ? 'full' : 'core';
+      const identityBlock = bridge.buildIdentityBlock(layer);
+      return {
+        text: `${identityBlock}\n\n[认知状态]\n${narrative}\n[/认知状态]\n\n${message}`
+      };
     }
-  }
-  return params;
+  };
 }
