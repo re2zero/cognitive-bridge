@@ -9,14 +9,12 @@
 import { CognitiveBridge } from './core.js';
 import { loadPersona } from './storage.js';
 import { registerPiExtension } from './adapters/pi.js';
-import { CogPlugin, createOpencodeCog } from './adapters/opencode.js';
 
 export { CognitiveBridge } from './core.js';
 export type { Persona, EmotionSignal, CognitiveState } from './types.js';
 export { loadPersona, savePersona } from './storage.js';
-export { CogPlugin } from './adapters/opencode.js';
 
-// ── pi 适配入口 ──
+// ── pi 适配入口（默认导出）──
 
 export default function piCog(pi: any) {
   const bridge = new CognitiveBridge();
@@ -27,10 +25,29 @@ export default function piCog(pi: any) {
   registerPiExtension(pi, bridge);
 }
 
-// ── opencode 适配入口（标准插件）──
+// ── opencode 适配入口（懒加载，避免 pi 环境报错）──
 
-export { CogPlugin as defaultOpencodePlugin };
+let _opencodeModule: typeof import('./adapters/opencode.js') | null = null;
 
-// ── opencode 适配入口（向后兼容）──
+async function loadOpencodeAdapter() {
+  if (!_opencodeModule) {
+    _opencodeModule = await import('./adapters/opencode.js');
+  }
+  return _opencodeModule;
+}
 
-export { createOpencodeCog };
+export const CogPlugin = new Proxy({}, {
+  get(_, prop) {
+    throw new Error(
+      'CogPlugin requires @opencode-ai/plugin. ' +
+      'Use dynamic import: const { CogPlugin } = await import("@re2zero/cog")'
+    );
+  }
+});
+
+export const createOpencodeCog = async () => {
+  const mod = await loadOpencodeAdapter();
+  return mod.createOpencodeCog();
+};
+
+export const defaultOpencodePlugin = CogPlugin;
