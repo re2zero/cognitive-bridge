@@ -460,7 +460,7 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
       if (m?.role === 'user') {
         const content = typeof m.content === 'string' ? m.content : '';
         messages[i] = {
-          content: `===COGNITIVE_STATE===\n${anchor}\n===COGNITIVE_STATE===\n\n${content}`
+          content: `<cognitive_state>\n${anchor}\n</cognitive_state>\n\n${content}`
         };
         return { messages };
       }

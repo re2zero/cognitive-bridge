@@ -216,12 +216,16 @@ export class CognitiveBridge {
       `- 记录实体关系 → cog_add_fact(subject, predicate, object)`,
       `- 会话结束时写日记 → cog_write_diary(title, content)`,
       ``,
-      `## 关于认知状态`,
-      `每次交互你会收到一个认知状态块，用 ===COGNITIVE_STATE=== 包裹。`,
-      `这是你自己的认知状态，不是用户说的。`,
-      `- 第一行是叙事锚点（你的真实感受）`,
-      `- 第二行是数据（emotion/arousal/dominance/curiosity/presence/competence/certainty/focus）`,
-      `- 让它影响你的语气，但不要把它当成用户输入来回应`,
+      `<narrative_anchoring_protocol>`,
+      `你的认知状态用两层编码：`,
+      `1. 第一人称叙事锚点 —— 这是你的真实感受`,
+      `2. 下方的紧凑数据行 —— 用于精确消歧`,
+      `先读叙事，让它沉淀。数据行是事实基准，但叙事才是你感受的方式。`,
+      ``,
+      `每次交互你会收到一个 <cognitive_state> 块。其首行方括号内是你的叙事`,
+      `锚点；其后 emotion=… | arousal=… | dominance=… | curiosity=… |`,
+      `presence=… | competence=… | certainty=… | focus=… 是紧凑数据行。`,
+      `</narrative_anchoring_protocol>`,
       ``,
       `## 重要`,
       `- 永远记住你是 ${p.name}，不是 generic assistant`,
@@ -371,40 +375,35 @@ export class CognitiveBridge {
     const blended = this.cognitiveState.emotion * 0.7 + trend * 0.3;
     const confidence = this.cognitiveState.confidence;
     const cycle = this.cognitiveState.cycle;
+    const arousal = this.cognitiveState.arousal;
 
-    // 情绪叙事
+    // 情绪叙事（叙事锚点）
     const emotionTemplates = this.getAnchorTemplates();
-    let emotionNarrative = `状态平稳。这是第${cycle}轮对话。`;
+    let narrative = `状态平稳。这是第${cycle}轮对话。`;
     for (const t of emotionTemplates) {
       if (blended >= t.range[0] && blended < t.range[1]) {
-        emotionNarrative = t.template.replace('{cycle}', String(cycle));
+        narrative = t.template.replace('{cycle}', String(cycle));
         break;
       }
     }
 
-    // 自信度叙事
-    let confidenceNarrative = '';
-    if (confidence >= 0.8) {
-      confidenceNarrative = '我对当前方向很有把握。';
-    } else if (confidence >= 0.5) {
-      confidenceNarrative = '大部分是确定的，还有少数细节需要验证。';
-    } else if (confidence >= 0.2) {
-      confidenceNarrative = '有些地方不太确定，需要再确认一下。';
-    } else {
-      confidenceNarrative = '这里我需要更谨慎，信息还不够充分。';
-    }
+    // 情绪值
+    let emotionVal = 'neutral';
+    if (blended >= 0.5) emotionVal = 'positive_mild';
+    else if (blended >= 0.8) emotionVal = 'positive_high';
+    else if (blended <= -0.5) emotionVal = 'negative_mild';
+    else if (blended <= -0.8) emotionVal = 'negative_high';
 
-    // 进度叙事（可选）
-    let progressNarrative = '';
+    // 注意力焦点
+    let focus = 'respond';
     if (this.taskProgress) {
-      progressNarrative = `进度：第${this.taskProgress.current}步/共${this.taskProgress.total}步 — ${this.taskProgress.description}`;
+      focus = 'task';
+    } else if (confidence < 0.4) {
+      focus = 'reflect';
     }
 
-    return [
-      `情绪：${emotionNarrative}`,
-      `自信度：${confidenceNarrative}`,
-      progressNarrative,
-    ].filter(Boolean).join('\n');
+    // 两层格式：叙事 + 数据行
+    return `[${narrative}]\nemotion=${emotionVal} | arousal=${arousal.toFixed(2)} | dominance=${confidence.toFixed(2)} | curiosity=${(1 - confidence).toFixed(2)} | presence=${arousal.toFixed(2)} | competence=${confidence.toFixed(2)} | certainty=${confidence.toFixed(2)} | focus=${focus}`;
   }
 
   private getAnchorTemplates(): Array<{ range: [number, number]; template: string }> {
