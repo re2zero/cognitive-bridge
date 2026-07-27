@@ -538,23 +538,21 @@ describe('generateNarrative with confidence', () => {
     bridge = createBridge();
   });
 
-  it('高自信度时数据行显示高 competence/certainty', () => {
+  it('高自信度时数据行显示高 confidence', () => {
     for (let i = 0; i < 5; i++) {
       bridge.advanceState({ emotion: 0.5, intensity: 0.3, keywords: [] }, 'positive');
     }
     const narrative = bridge.generateNarrative();
     expect(narrative).toMatch(/^\[.+\]$/m); // 叙事锚点
-    expect(narrative).toMatch(/competence=0\.[89]/); // 高 competence
-    expect(narrative).toMatch(/certainty=0\.[89]/); // 高 certainty
+    expect(narrative).toMatch(/confidence=0\.[89]/); // 高 confidence
   });
 
-  it('低自信度时数据行显示低 competence/certainty', () => {
+  it('低自信度时数据行显示低 confidence', () => {
     for (let i = 0; i < 5; i++) {
       bridge.advanceState({ emotion: 0, intensity: 0.3, keywords: [] }, 'negative');
     }
     const narrative = bridge.generateNarrative();
     expect(narrative).toMatch(/^\[.+\]$/m); // 叙事锚点
-    expect(narrative).toMatch(/competence=0\.[012]/); // 低 competence
-    expect(narrative).toMatch(/certainty=0\.[012]/); // 低 certainty
+    expect(narrative).toMatch(/confidence=0\.[012]/); // 低 confidence
   });
 });

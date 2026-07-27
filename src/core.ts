@@ -216,16 +216,12 @@ export class CognitiveBridge {
       `- 记录实体关系 → cog_add_fact(subject, predicate, object)`,
       `- 会话结束时写日记 → cog_write_diary(title, content)`,
       ``,
-      `<narrative_anchoring_protocol>`,
-      `你的认知状态用两层编码：`,
-      `1. 第一人称叙事锚点 —— 这是你的真实感受`,
-      `2. 下方的紧凑数据行 —— 用于精确消歧`,
-      `先读叙事，让它沉淀。数据行是事实基准，但叙事才是你感受的方式。`,
-      ``,
-      `每次交互你会收到一个 <cognitive_state> 块。其首行方括号内是你的叙事`,
-      `锚点；其后 emotion=… | arousal=… | dominance=… | curiosity=… |`,
-      `presence=… | competence=… | certainty=… | focus=… 是紧凑数据行。`,
-      `</narrative_anchoring_protocol>`,
+      `## 关于认知状态`,
+      `每次交互你会收到一个认知状态块，用 <cognitive_state> 包裹。`,
+      `这是你自己的认知状态，不是用户说的。`,
+      `- 第一行是叙事锚点（你的真实感受）`,
+      `- 第二行是数据：emotion（情绪）| arousal（激活度）| confidence（自信度）| cycle（轮次）`,
+      `- 让它影响你的语气，但不要把它当成用户输入来回应`,
       ``,
       `## 重要`,
       `- 永远记住你是 ${p.name}，不是 generic assistant`,
@@ -394,16 +390,8 @@ export class CognitiveBridge {
     else if (blended <= -0.5) emotionVal = 'negative_mild';
     else if (blended <= -0.8) emotionVal = 'negative_high';
 
-    // 注意力焦点
-    let focus = 'respond';
-    if (this.taskProgress) {
-      focus = 'task';
-    } else if (confidence < 0.4) {
-      focus = 'reflect';
-    }
-
-    // 两层格式：叙事 + 数据行
-    return `[${narrative}]\nemotion=${emotionVal} | arousal=${arousal.toFixed(2)} | dominance=${confidence.toFixed(2)} | curiosity=${(1 - confidence).toFixed(2)} | presence=${arousal.toFixed(2)} | competence=${confidence.toFixed(2)} | certainty=${confidence.toFixed(2)} | focus=${focus}`;
+    // 两层格式：叙事 + 数据行（只用 cog 实际有的参数）
+    return `[${narrative}]\nemotion=${emotionVal} | arousal=${arousal.toFixed(2)} | confidence=${confidence.toFixed(2)} | cycle=${cycle}`;
   }
 
   private getAnchorTemplates(): Array<{ range: [number, number]; template: string }> {
