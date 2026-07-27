@@ -326,8 +326,10 @@ export const CogPlugin: Plugin = async (ctx) => {
       const feedback = bridge.detectFeedback(text);
       bridge.advanceState(signal, feedback);
 
-      // 生成叙事锚点 + 身份注入
+      // 生成叙事锚点
       const narrative = bridge.generateNarrative();
+
+      // 身份注入（系统提示词，静态）
       const layer = bridge.currentState.cycle <= 1 ? 'full' : 'core';
       let identityBlock = bridge.buildIdentityBlock(layer);
       if (isCodingSession) {
@@ -343,12 +345,19 @@ export const CogPlugin: Plugin = async (ctx) => {
         diaryContextInjected = true;
       }
 
-      // 注入到 parts
-      const systemText = `${identityBlock}\n\n[认知状态]\n${narrative}\n[/认知状态]`;
+      // 注入身份到系统提示词
       output.parts.unshift({
         type: 'text',
-        text: systemText
+        text: identityBlock
       } as any);
+
+      // 注入认知状态到用户消息（动态，KV 缓存友好）
+      for (const p of output.parts) {
+        if (p.type === 'text') {
+          (p as any).text = `<cognitive_state>\n${narrative}\n</cognitive_state>\n\n${(p as any).text}`;
+          break;
+        }
+      }
     },
 
     'tool.execute.after': async (input, output) => {
