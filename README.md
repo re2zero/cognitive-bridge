@@ -56,14 +56,14 @@
  (omp 完全兼容 pi)
 ```
 
-## 平台安装
+## 安装
 
 ### pi / omp
 
 omp 完全兼容 pi，使用相同的安装方式和钩子系统。
 
 ```bash
-# 1. npm 发布后安装
+# 1. 安装插件
 pi install npm:cog
 
 # 2. 启用插件（settings.json）
@@ -72,14 +72,14 @@ pi install npm:cog
   "packages": ["cog"]
 }
 
-# 3. 首次使用自动触发唤醒仪式
+# 3. 重启 pi，首次使用自动触发唤醒仪式
 pi
 ```
 
 ### opencode
 
 ```bash
-# 1. npm 安装到 opencode 插件目录
+# 1. 安装到 opencode 插件目录
 cd ~/.config/opencode/plugins
 npm install cog
 
@@ -89,9 +89,40 @@ npm install cog
   "plugin": ["cog"]
 }
 
-# 3. 首次使用自动触发唤醒仪式
+# 3. 重启 opencode，首次使用自动触发唤醒仪式
 opencode
 ```
+
+## 使用
+
+### 唤醒仪式
+
+首次使用时，银月会问你三个问题：
+1. 你希望我叫什么名字？
+2. 谁是你的创造者？
+3. 希望以什么风格和你对话？
+
+设定后人格固化，后续会话自动加载。
+
+### 记忆工具
+
+银月拥有跨会话持久记忆能力，通过标准工具调用：
+
+| 工具 | 说明 |
+|---|---|
+| `cog_memorize` | 保存记忆（决策/bugfix/发现/模式/偏好） |
+| `cog_recall` | 搜索记忆（FTS5 全文搜索） |
+| `cog_add_fact` | 添加知识图谱事实 |
+| `cog_query_facts` | 查询实体事实 |
+| `cog_timeline` | 获取实体时间线 |
+| `cog_write_diary` | 写会话日记 |
+| `cog_read_diary` | 读最近日记 |
+| `cog_stats` | 记忆统计 |
+
+### 命令
+
+- `/mood` — 查看当前情绪状态和趋势
+- `/memory` — 查看记忆统计
 
 ## 钩子时序
 
