@@ -1,7 +1,8 @@
 /**
  * pi 适配器：将 CognitiveBridge 接入 pi 的 ExtensionAPI。
  * 
- * 使用 pi 的钩子系统：input, before_agent_start, context, turn_end。
+ * 使用标准工具注册 API：pi.registerTool()
+ * 使用钩子系统：input, before_agent_start, context, turn_end
  */
 import type { Persona } from '../types.js';
 import type { DiaryEntry } from '../memory.js';
@@ -13,6 +14,13 @@ import { buildMoodReport } from '../mood.js';
 
 interface PiExtensionAPI {
   on(event: string, handler: Function): void;
+  registerTool(tool: {
+    name: string;
+    label: string;
+    description: string;
+    parameters: any;
+    execute(id: string, params: any): Promise<any>;
+  }): void;
 }
 
 interface PiEvent {
@@ -34,21 +42,13 @@ interface PiContext {
 
 // ── 辅助函数 ──
 
-/**
- * 构建日记上下文文本，注入到系统提示词。
- */
 function buildDiaryContext(diary: DiaryEntry[]): string {
   if (diary.length === 0) return '';
-
   const lines = [
     '## 最近会话记录',
-    ...diary.map(d => {
-      const date = d.createdAt.slice(0, 10);
-      return `- ${date}: ${d.title}`;
-    }),
+    ...diary.map(d => `- ${d.createdAt.slice(0, 10)}: ${d.title}`),
     ''
   ];
-
   return lines.join('\n');
 }
 
@@ -58,6 +58,280 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
   const LOG_TAG = '[cog:pi]';
   let pendingAnchor: string | null = null;
   let isCodingSession = false;
+  let diaryContextInjected = false;
+
+  // ── 注册记忆工具 ──
+
+  pi.registerTool({
+    name: 'cog_memorize',
+    label: 'Memorize',
+    description: 'Save a persistent memory. Use after important decisions, bug fixes, discoveries, patterns, or learning user preferences.',
+    parameters: {
+      type: 'object',
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['decision', 'bugfix', 'discovery', 'pattern', 'preference'],
+          description: 'Memory type'
+        },
+        topic: {
+          type: 'string',
+          description: 'Topic category, e.g. architecture, auth, deployment'
+        },
+        title: {
+          type: 'string',
+          description: 'Short title, verb-first, e.g. "Fixed N+1 query in UserList"'
+        },
+        content: {
+          type: 'string',
+          description: 'Content in [What]/[Why]/[Where]/[Learned] format'
+        },
+        topicKey: {
+          type: 'string',
+          description: 'Stable key for evolving topics, e.g. architecture/auth-model'
+        },
+        context: {
+          type: 'string',
+          description: 'Optional additional context'
+        }
+      },
+      required: ['type', 'topic', 'title', 'content']
+    },
+    async execute(_id, params) {
+      const memory = bridge.memorize(params);
+      return {
+        content: [{ type: 'text', text: `Memory saved: ${memory.title} (id: ${memory.id.slice(0, 8)})` }]
+      };
+    }
+  });
+
+  pi.registerTool({
+    name: 'cog_recall',
+    label: 'Recall Memory',
+    description: 'Search memories by keyword. Use when you need to recall past decisions, experiences, or knowledge.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query, supports phrases and keywords' },
+        topic: { type: 'string', description: 'Filter by topic' },
+        type: {
+          type: 'string',
+          enum: ['decision', 'bugfix', 'discovery', 'pattern', 'preference'],
+          description: 'Filter by type'
+        },
+        limit: { type: 'integer', description: 'Max results (default: 10)' }
+      },
+      required: ['query']
+    },
+    async execute(_id, params) {
+      const results = bridge.recall(params.query, {
+        topic: params.topic,
+        type: params.type,
+        limit: params.limit ?? 10
+      });
+      if (results.length === 0) {
+        return { content: [{ type: 'text', text: `No memories found for "${params.query}"` }] };
+      }
+      const items = results.map((r: any) =>
+        `- [${r.type}] ${r.title} (${r.createdAt.slice(0, 10)})\n  ${r.content.slice(0, 200)}`
+      ).join('\n\n');
+      return { content: [{ type: 'text', text: `Found ${results.length} memory(ies):\n\n${items}` }] };
+    }
+  });
+
+  pi.registerTool({
+    name: 'cog_get_by_topic_key',
+    label: 'Get by Topic Key',
+    description: 'Get all memories for an evolving topic by its stable key.',
+    parameters: {
+      type: 'object',
+      properties: {
+        topicKey: { type: 'string', description: 'Topic key, e.g. architecture/auth-model' }
+      },
+      required: ['topicKey']
+    },
+    async execute(_id, params) {
+      const memories = bridge.getByTopicKey(params.topicKey);
+      if (memories.length === 0) {
+        return { content: [{ type: 'text', text: `No memories found for topic key "${params.topicKey}"` }] };
+      }
+      const items = memories.map((m: any) =>
+        `- ${m.title} (${m.createdAt.slice(0, 10)})\n  ${m.content.slice(0, 200)}`
+      ).join('\n\n');
+      return { content: [{ type: 'text', text: `Found ${memories.length} memory(ies) for "${params.topicKey}":\n\n${items}` }] };
+    }
+  });
+
+  pi.registerTool({
+    name: 'cog_add_fact',
+    label: 'Add Fact',
+    description: 'Add a fact to the knowledge graph. Use to record entity relationships.',
+    parameters: {
+      type: 'object',
+      properties: {
+        subject: { type: 'string', description: 'Subject entity, e.g. "银月", "cog", "公子"' },
+        predicate: { type: 'string', description: 'Relationship, e.g. works_on, created_by, prefers, knows, decided' },
+        object: { type: 'string', description: 'Object entity' }
+      },
+      required: ['subject', 'predicate', 'object']
+    },
+    async execute(_id, params) {
+      const fact = bridge.addFact(params.subject, params.predicate, params.object);
+      return { content: [{ type: 'text', text: `Fact added: ${fact.subject} → ${fact.predicate} → ${fact.object}` }] };
+    }
+  });
+
+  pi.registerTool({
+    name: 'cog_query_facts',
+    label: 'Query Facts',
+    description: 'Query current facts about an entity from the knowledge graph.',
+    parameters: {
+      type: 'object',
+      properties: {
+        entity: { type: 'string', description: 'Entity to query, e.g. "银月", "cog"' }
+      },
+      required: ['entity']
+    },
+    async execute(_id, params) {
+      const facts = bridge.queryFacts(params.entity);
+      if (facts.length === 0) {
+        return { content: [{ type: 'text', text: `No facts found about "${params.entity}"` }] };
+      }
+      const items = facts.map((f: any) =>
+        `- ${f.subject} → ${f.predicate} → ${f.object}${f.validTo ? ` (ended: ${f.validTo.slice(0, 10)})` : ' (current)'}`
+      ).join('\n');
+      return { content: [{ type: 'text', text: `Facts about "${params.entity}":\n${items}` }] };
+    }
+  });
+
+  pi.registerTool({
+    name: 'cog_timeline',
+    label: 'Timeline',
+    description: 'Get the chronological timeline of facts about an entity.',
+    parameters: {
+      type: 'object',
+      properties: {
+        entity: { type: 'string', description: 'Entity to get timeline for' }
+      },
+      required: ['entity']
+    },
+    async execute(_id, params) {
+      const timeline = bridge.timeline(params.entity);
+      if (timeline.length === 0) {
+        return { content: [{ type: 'text', text: `No timeline found for "${params.entity}"` }] };
+      }
+      const items = timeline.map((f: any) =>
+        `- ${f.validFrom.slice(0, 10)}: ${f.subject} → ${f.predicate} → ${f.object}${f.validTo ? ` → ended ${f.validTo.slice(0, 10)}` : ''}`
+      ).join('\n');
+      return { content: [{ type: 'text', text: `Timeline for "${params.entity}":\n${items}` }] };
+    }
+  });
+
+  pi.registerTool({
+    name: 'cog_write_diary',
+    label: 'Write Diary',
+    description: 'Write a session diary entry. Use at the end of a significant session.',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Short title for the diary entry' },
+        content: { type: 'string', description: 'Diary content in AAAK format: ## Goal / ## Discoveries / ## Accomplished / ## Next Steps' }
+      },
+      required: ['title', 'content']
+    },
+    async execute(_id, params) {
+      const entry = bridge.writeDiary(params.title, params.content);
+      return { content: [{ type: 'text', text: `Diary written: ${entry.title}` }] };
+    }
+  });
+
+  pi.registerTool({
+    name: 'cog_read_diary',
+    label: 'Read Diary',
+    description: 'Read recent diary entries to recall past sessions.',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: { type: 'integer', description: 'Number of recent entries (default: 5)' }
+      },
+      required: []
+    },
+    async execute(_id, params) {
+      const entries = bridge.readDiary(params.limit ?? 5);
+      if (entries.length === 0) {
+        return { content: [{ type: 'text', text: 'No diary entries found' }] };
+      }
+      const items = entries.map((e: any) =>
+        `- ${e.createdAt.slice(0, 10)}: ${e.title}\n  ${e.content.slice(0, 300)}`
+      ).join('\n\n');
+      return { content: [{ type: 'text', text: `Recent diary entries:\n\n${items}` }] };
+    }
+  });
+
+  pi.registerTool({
+    name: 'cog_get_conflicts',
+    label: 'Get Conflicts',
+    description: 'Get pending memory conflicts that need judgment.',
+    parameters: { type: 'object', properties: {} },
+    async execute() {
+      const conflicts = bridge.getPendingConflicts();
+      if (conflicts.length === 0) {
+        return { content: [{ type: 'text', text: 'No pending conflicts' }] };
+      }
+      const items = conflicts.map((c: any) =>
+        `- [${c.id.slice(0, 8)}] ${c.relation} (confidence: ${c.confidence.toFixed(2)})\n  new: ${c.newMemoryId.slice(0, 8)} vs existing: ${c.existingMemoryId.slice(0, 8)}`
+      ).join('\n');
+      return { content: [{ type: 'text', text: `Pending conflicts:\n${items}` }] };
+    }
+  });
+
+  pi.registerTool({
+    name: 'cog_judge_conflict',
+    label: 'Judge Conflict',
+    description: 'Judge a memory conflict by specifying the relationship.',
+    parameters: {
+      type: 'object',
+      properties: {
+        conflictId: { type: 'string', description: 'Conflict ID' },
+        relation: {
+          type: 'string',
+          enum: ['supersedes', 'conflicts_with', 'compatible', 'related', 'scoped', 'not_conflict'],
+          description: 'Relationship'
+        },
+        reason: { type: 'string', description: 'Reason for the judgment' }
+      },
+      required: ['conflictId', 'relation']
+    },
+    async execute(_id, params) {
+      bridge.judgeConflict(params.conflictId, params.relation, params.reason);
+      return { content: [{ type: 'text', text: `Conflict judged: ${params.relation}` }] };
+    }
+  });
+
+  pi.registerTool({
+    name: 'cog_stats',
+    label: 'Memory Stats',
+    description: 'Get memory statistics.',
+    parameters: { type: 'object', properties: {} },
+    async execute() {
+      const stats = bridge.getMemoryStats();
+      const text = [
+        '## Memory Statistics',
+        `- Total memories: ${stats.totalMemories}`,
+        `- By type:`,
+        `  - decisions: ${stats.memoriesByType.decision}`,
+        `  - bugfixes: ${stats.memoriesByType.bugfix}`,
+        `  - discoveries: ${stats.memoriesByType.discovery}`,
+        `  - patterns: ${stats.memoriesByType.pattern}`,
+        `  - preferences: ${stats.memoriesByType.preference}`,
+        `- Diary entries: ${stats.totalDiaryEntries}`,
+        `- Knowledge graph facts: ${stats.currentFacts} current, ${stats.expiredFacts} expired`,
+        `- Pending conflicts: ${stats.pendingConflicts}`,
+        `- Database size: ${(stats.databaseSize / 1024).toFixed(1)} KB`
+      ].join('\n');
+      return { content: [{ type: 'text', text }] };
+    }
+  });
 
   // ── session_start：加载 persona + 日记 ──
   pi.on('session_start', (_event: any, _ctx: any) => {
@@ -69,12 +343,10 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
       }
     }
 
-    // 加载最近日记，注入到系统提示词
     const recentDiary = bridge.readDiary(3);
     if (recentDiary.length > 0) {
       const diaryContext = buildDiaryContext(recentDiary);
       console.error(`${LOG_TAG} Loaded ${recentDiary.length} recent diary entries`);
-      // 日记上下文通过 before_agent_start 注入
       (pi as any)._cogDiaryContext = diaryContext;
     }
 
@@ -103,7 +375,7 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
       return { action: 'handled' };
     }
 
-    // /memory 命令：查看记忆统计
+    // /memory 命令
     if (text.trim().toLowerCase() === '/memory') {
       const stats = bridge.getMemoryStats();
       const report = [
@@ -149,12 +421,10 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
   pi.on('before_agent_start', async (event: PiEvent, _ctx: PiContext) => {
     const ret: Record<string, unknown> = {};
 
-    // 身份注入（分层）
     if (bridge.awakened) {
       const layer = bridge.currentState.cycle === 0 ? 'full' : 'core';
       let identityBlock = bridge.buildIdentityBlock(layer);
 
-      // 编码任务时追加 L3
       if (isCodingSession) {
         identityBlock += '\n\n' + bridge.buildIdentityBlock('coding');
       }
@@ -217,6 +487,5 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
     }
   });
 
-  console.error(`${LOG_TAG} Extension loaded. Awakened: ${bridge.awakened}`);
+  console.error(`${LOG_TAG} Extension loaded. Awakened: ${bridge.awakened}. Tools registered: 12`);
 }
-
