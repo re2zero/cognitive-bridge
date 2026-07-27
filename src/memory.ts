@@ -11,11 +11,26 @@
  * - 会话管理
  * - 统计功能
  */
-import Database from 'better-sqlite3';
 import { createHash, randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync, mkdirSync } from 'node:fs';
+import Database from 'better-sqlite3';
+
+// ── SQLite: conditional import for Bun vs Node.js ──
+
+interface DatabaseInstance {
+  exec(sql: string): void;
+  prepare(sql: string): StatementInstance;
+  transaction(fn: (...args: any[]) => any): any;
+  close(): void;
+}
+
+interface StatementInstance {
+  run(...params: any[]): { changes?: number; lastInsertRowid?: number | string | bigint };
+  get(...params: any[]): any;
+  all(...params: any[]): any[];
+}
 
 // ── 类型 ──
 
@@ -242,7 +257,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(ended_at) WHERE ended
 // ── 核心类 ──
 
 export class MemoryStore {
-  private db: Database.Database;
+  private db: DatabaseInstance;
   private configDir: string;
   private dbPath: string;
 
@@ -250,9 +265,20 @@ export class MemoryStore {
     this.configDir = configDir || join(homedir(), '.config', 'cog');
     this.dbPath = join(this.configDir, 'cog.db');
     this.ensureConfigDir();
-    this.db = new Database(this.dbPath);
+    // Note: db initialization is synchronous for both Bun and Node.js
+    // The createDatabase helper handles the conditional import internally
+    this.db = this.createDb();
     this.configureDatabase();
     this.initializeSchema();
+  }
+
+  private createDb(): DatabaseInstance {
+    if (typeof Bun !== 'undefined') {
+      const { Database: BunDatabase } = require('bun:sqlite');
+      return new BunDatabase(this.dbPath);
+    } else {
+      return new Database(this.dbPath);
+    }
   }
 
   private ensureConfigDir(): void {
@@ -262,9 +288,9 @@ export class MemoryStore {
   }
 
   private configureDatabase(): void {
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('foreign_keys = ON');
-    this.db.pragma('synchronous = NORMAL');
+    this.db.exec('PRAGMA journal_mode = WAL');
+    this.db.exec('PRAGMA foreign_keys = ON');
+    this.db.exec('PRAGMA synchronous = NORMAL');
   }
 
   private initializeSchema(): void {
@@ -481,7 +507,7 @@ export class MemoryStore {
       WHERE subject = ? AND predicate = ? AND object = ? AND valid_to IS NULL
     `).run(validTo, subject, predicate, object);
 
-    return result.changes > 0;
+    return (result.changes ?? 0) > 0;
   }
 
   supersedeFact(
@@ -731,9 +757,9 @@ export class MemoryStore {
   // ── 统计 ──
 
   stats(): MemoryStats {
-    const pageCount = this.db.pragma('page_count') as Array<{ page_count: number }>;
-    const pageSize = this.db.pragma('page_size') as Array<{ page_size: number }>;
-    const dbSize = (pageCount[0]?.page_count ?? 0) * (pageSize[0]?.page_size ?? 0);
+    const pageCount = this.db.prepare('PRAGMA page_count').get() as { page_count: number };
+    const pageSize = this.db.prepare('PRAGMA page_size').get() as { page_size: number };
+    const dbSize = (pageCount?.page_count ?? 0) * (pageSize?.page_size ?? 0);
 
     const memoriesByType: Record<MemoryType, number> = {
       decision: 0,

@@ -2,12 +2,15 @@
  * opencode 适配器：将 CognitiveBridge 接入 opencode 的插件系统。
  * 
  * 使用标准工具注册 API，LLM 通过标准工具调用格式调用记忆工具。
+ * 
+ * 防重复加载：通过 singleton 模块确保 OMP 中不与 Pi 扩展双重注册。
  */
 import type { Plugin, ToolDefinition } from '@opencode-ai/plugin';
 import { tool } from '@opencode-ai/plugin';
 import { CognitiveBridge } from '../core.js';
 import { loadPersona, savePersona } from '../storage.js';
 import { buildMoodReport } from '../mood.js';
+import { tryInit } from '../singleton.js';
 import type { DiaryEntry, MemoryType } from '../memory.js';
 
 // ── 辅助函数 ──
@@ -248,6 +251,15 @@ function createMemoryTools(bridge: CognitiveBridge): Record<string, ToolDefiniti
 // ── 插件导出 ──
 
 export const CogPlugin: Plugin = async (ctx) => {
+  // 防重复加载：如果已被 Pi 扩展初始化，返回空插件
+  if (!tryInit('opencode-CogPlugin')) {
+    return {
+      tool: {},
+      event: async () => {},
+      'chat.message': async (input: any, output: any) => {}
+    };
+  }
+
   const bridge = new CognitiveBridge();
   const existingPersona = loadPersona();
   if (existingPersona) {
