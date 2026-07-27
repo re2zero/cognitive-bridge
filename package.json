@@ -1,6 +1,6 @@
 {
   "name": "@re2zero/cog",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "轻量级认知增强插件：为 pi 注入身份认知 + 动态 NAP 叙事锚点",
   "type": "module",
   "main": "dist/index.js",
@@ -25,7 +25,7 @@
   ],
   "pi": {
     "extensions": [
-      "./index.ts"
+      "./src/index.ts"
     ]
   },
   "license": "MIT",
@@ -52,7 +52,7 @@
   },
   "files": [
     "dist/",
-    "index.ts",
+    "src/",
     "config/",
     "README.md"
   ],
