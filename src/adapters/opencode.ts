@@ -290,6 +290,7 @@ export const CogPlugin: Plugin = async (ctx) => {
       if (bridge.needsCeremony()) {
         const result = bridge.handleCeremony(text);
         if (result.completed) {
+          bridge.setPersona(result.completed);  // 更新 bridge 状态
           savePersona(result.completed);
         }
         output.parts = [{ type: 'text', text: result.response } as any];
@@ -357,14 +358,16 @@ export const CogPlugin: Plugin = async (ctx) => {
         diaryContextInjected = true;
       }
 
-      // 注入身份到系统提示词
+      // 注入身份到系统提示词（unshift 到 parts 最前）
       output.parts.unshift({
         type: 'text',
         text: identityBlock
       } as any);
 
       // 注入认知状态到用户消息（动态，KV 缓存友好）
-      for (const p of output.parts) {
+      // 注意：跳过刚 unshift 的 identityBlock，只包裹真正的用户消息
+      for (let i = 1; i < output.parts.length; i++) {
+        const p = output.parts[i];
         if (p.type === 'text') {
           (p as any).text = `<cognitive_state>\n${narrative}\n</cognitive_state>\n\n${(p as any).text}`;
           break;

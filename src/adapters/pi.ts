@@ -359,7 +359,10 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
     // 觉醒仪式
     if (bridge.needsCeremony()) {
       const result = bridge.handleCeremony(text);
-      if (result.completed) savePersona(result.completed);
+      if (result.completed) {
+        bridge.setPersona(result.completed);  // 更新 bridge 状态
+        savePersona(result.completed);
+      }
       ctx?.ui?.notify?.(result.response, 'info');
       return { action: 'handled' };
     }
@@ -412,7 +415,8 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
     } else if (isCodingSession && bridge.currentState.cycle > 10) {
       isCodingSession = false;
     }
-    return { action: 'continue' };
+    // 正常流程返回 undefined，让 pi 继续处理
+    return undefined;
   });
 
   // ── before_agent_start：注入身份 + 设置 NAP 锚点 ──
@@ -447,6 +451,20 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
   });
 
   // ── context：注入 NAP 锚点到最新用户消息 ──
+  // 注意：content 可能是 string 或 array（[{type:'text',...}]），必须正确处理 array，
+  // 否则原始用户消息丢失 + 类型不一致导致 TUI 渲染异常（双层）。
+  function prependStateToUserContent(content: any, anchor: string): any {
+    const block = `<cognitive_state>\n${anchor}\n</cognitive_state>\n\n`;
+    if (typeof content === 'string') return block + content;
+    if (Array.isArray(content)) {
+      if (content.length > 0 && content[0]?.type === 'text') {
+        return [{ type: 'text', text: block + content[0].text }, ...content.slice(1)];
+      }
+      return [{ type: 'text', text: block }, ...content];
+    }
+    return block + String(content ?? '');
+  }
+
   pi.on('context', async (event: PiEvent, _ctx: PiContext) => {
     const anchor = (pi as any)._cogPendingAnchor;
     if (!anchor) return undefined;
@@ -458,12 +476,12 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
       if (m?.role === 'user') {
-        const content = typeof m.content === 'string' ? m.content : '';
-        messages[i] = {
+        const newMessages = [...messages];
+        newMessages[i] = {
           ...m,
-          content: `<cognitive_state>\n${anchor}\n</cognitive_state>\n\n${content}`
+          content: prependStateToUserContent(m.content, anchor)
         };
-        return { messages };
+        return { messages: newMessages };
       }
     }
     return undefined;

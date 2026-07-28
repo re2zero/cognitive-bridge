@@ -15,9 +15,15 @@ import { createHash, randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync, mkdirSync } from 'node:fs';
-import Database from 'better-sqlite3';
 
 // ── SQLite: conditional import for Bun vs Node.js ──
+// 注意：better-sqlite3 是 Node native addon，在 Bun 环境下不应加载。
+// 用动态 require 避免顶层静态 import 触发 native 模块加载。
+let Database: any = null;
+if (typeof (globalThis as any).Bun === 'undefined') {
+  // Node.js 环境：延迟加载 better-sqlite3
+  Database = require('better-sqlite3');
+}
 
 interface DatabaseInstance {
   exec(sql: string): void;
@@ -274,9 +280,11 @@ export class MemoryStore {
 
   private createDb(): DatabaseInstance {
     if (typeof Bun !== 'undefined') {
+      // Bun 环境：用内置 sqlite，绝不加载 better-sqlite3 native addon
       const { Database: BunDatabase } = require('bun:sqlite');
       return new BunDatabase(this.dbPath);
     } else {
+      // Node.js 环境：Database 已在模块顶部延迟加载
       return new Database(this.dbPath);
     }
   }

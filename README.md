@@ -13,7 +13,7 @@
 
 - 不启动 daemon，不连接 Unix socket，不调 RPC
 - 所有状态、逻辑、持久化都在插件内完成
-- 运行时依赖：Node.js 内置模块 + better-sqlite3（SQLite + FTS5）
+- 运行时依赖：Node.js 内置模块 + SQLite（Node 环境 better-sqlite3，Bun 环境 bun:sqlite）
 
 ### 2. 插件即完整认知系统
 
@@ -70,33 +70,37 @@
 
 ### pi / omp
 
-omp 完全兼容 pi，使用相同的安装方式和钩子系统。
+omp 完全兼容 pi，使用相同的钩子系统。两者都可以用插件管理器安装：
 
 ```bash
-# 1. 安装插件
+# omp（推荐）
+omp plugin install @re2zero/cog
+
+# pi
 pi install npm:@re2zero/cog
 
-# 2. 启用插件（settings.json）
-# ~/.pi/agent/settings.json 或 ~/.config/omp/config.json
-{
-  "packages": ["cog"]
-}
-
-# 3. 重启 pi，首次使用自动触发唤醒仪式
-pi
+# 或手动安装到插件目录
+cd ~/.omp/plugins && npm install @re2zero/cog
 ```
+
+安装后重启 omp/pi，首次使用自动触发唤醒仪式。
+
+> **注意**：cog 也可作为扩展放到 `~/.omp/agent/extensions/` 或 `~/.pi/agent/extensions/`（需保留 `src/` 目录结构和 `package.json`）。但推荐使用插件管理器安装，便于版本管理。
 
 ### opencode
 
 ```bash
 # 1. 安装到 opencode 插件目录
-cd ~/.config/opencode/plugins
-npm install @re2zero/cog
+opencode plugin @re2zero/cog -g
+
+# 或手动
+
+cd ~/.config/opencode/plugins && npm install @re2zero/cog
 
 # 2. 启用插件
 # ~/.config/opencode/opencode.jsonc
 {
-  "plugin": ["cog"]
+  "plugin": ["@re2zero/cog"]
 }
 
 # 3. 重启 opencode，首次使用自动触发唤醒仪式
@@ -231,7 +235,10 @@ before_agent_start 钩子
   │
   ▼
 context 钩子
-  pendingAnchor → prepend 到最新 user message → drain
+  pendingAnchor → prependStateToUserContent → 注入到最新 user message
+  ├─ content 为 string：`<cognitive_state>...</cognitive_state>\n\n${text}`
+  └─ content 为 array：保留 block 结构，注入到首个 text block
+  注意：必须保留 array 格式，否则原始消息丢失 + TUI 渲染异常
   │
   ▼
 大脑 LLM（看到：系统提示词含身份块 + 最新用户消息含 [NAP+用户输入]）
