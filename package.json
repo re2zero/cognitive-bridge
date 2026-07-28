@@ -26,8 +26,11 @@
   ],
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./dist/index.js"
     ]
+  },
+  "opencode": {
+    "plugin": "./dist/opencode-entry.js"
   },
   "license": "MIT",
   "dependencies": {
@@ -54,7 +57,6 @@
   },
   "files": [
     "dist/",
-    "src/",
     "config/"
   ],
   "allowScripts": {

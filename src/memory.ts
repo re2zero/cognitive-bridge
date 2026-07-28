@@ -15,6 +15,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync, mkdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 
 // ── SQLite: conditional import for Bun vs Node.js ──
 // 注意：better-sqlite3 是 Node native addon，在 Bun 环境下不应加载。

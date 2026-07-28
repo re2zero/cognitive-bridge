@@ -251,15 +251,8 @@ function createMemoryTools(bridge: CognitiveBridge): Record<string, ToolDefiniti
 // ── 插件导出 ──
 
 export const CogPlugin: Plugin = async (ctx) => {
-  // 防重复加载：如果已被 Pi 扩展初始化，返回空插件
-  if (!tryInit('opencode-CogPlugin')) {
-    return {
-      tool: {},
-      event: async () => {},
-      'chat.message': async (input: any, output: any) => {}
-    };
-  }
-
+  // 注意：统一入口 (initOpencodePlugin) 已处理 tryInit，
+  // 这里直接创建 bridge，不再重复检查
   const bridge = new CognitiveBridge();
   const existingPersona = loadPersona();
   if (existingPersona) {
@@ -284,13 +277,13 @@ export const CogPlugin: Plugin = async (ctx) => {
     },
 
     'chat.message': async (input, output) => {
-      const text = extractText(output.message);
+      const text = extractText(output.parts);
 
       // 仪式检查
       if (bridge.needsCeremony()) {
         const result = bridge.handleCeremony(text);
         if (result.completed) {
-          bridge.setPersona(result.completed);  // 更新 bridge 状态
+          bridge.setPersona(result.completed);
           savePersona(result.completed);
         }
         output.parts = [{ type: 'text', text: result.response } as any];
@@ -339,8 +332,14 @@ export const CogPlugin: Plugin = async (ctx) => {
       const feedback = bridge.detectFeedback(text);
       bridge.advanceState(signal, feedback);
 
+      // 生成叙事锚点（缓存供 system.transform 使用）
+      bridge.generateNarrative();
+    },
 
-      // 身份注入（系统提示词，静态）
+    // ─── 系统提示词注入（静态身份）──
+    'experimental.chat.system.transform': async (_input, output) => {
+      if (!output.system) output.system = [];
+
       const layer = bridge.currentState.cycle <= 1 ? 'full' : 'core';
       let identityBlock = bridge.buildIdentityBlock(layer);
       if (isCodingSession) {
@@ -356,25 +355,25 @@ export const CogPlugin: Plugin = async (ctx) => {
         diaryContextInjected = true;
       }
 
-      // 注入身份到系统提示词（unshift 到 parts 最前）
-      output.parts.unshift({
-        type: 'text',
-        text: identityBlock
-      } as any);
+      output.system.unshift(identityBlock);
+    },
 
-      // 注入认知状态到用户消息（条件注入，KV 缓存友好）
-      // 只在状态有意义变化时注入，避免重复 token
-      if (bridge.shouldInjectNarrative()) {
-        const narrative = bridge.generateNarrative();
-        bridge.markNarrativeInjected();
+    // ─── 消息注入（动态认知状态）──
+    'experimental.chat.messages.transform': async (_input, output) => {
+      if (!output.messages || !Array.isArray(output.messages)) return;
 
-        // 跳过刚 unshift 的 identityBlock，只包裹真正的用户消息
-        for (let i = 1; i < output.parts.length; i++) {
-          const p = output.parts[i];
-          if (p.type === 'text') {
-            (p as any).text = `<cognitive_state>\n${narrative}\n</cognitive_state>\n\n${(p as any).text}`;
-            break;
-          }
+      const narrative = bridge.generateNarrative();
+      if (!narrative) return;
+
+      // 找到最新的 user 消息，在其第一个 text part 前置注入认知状态
+      for (let i = output.messages.length - 1; i >= 0; i--) {
+        const msg = output.messages[i];
+        if (!msg || !msg.info || msg.info.role !== 'user') continue;
+        const textParts = (msg.parts || []).filter(
+          (p: any) => p.type === 'text' && typeof p.text === 'string'
+        );
+        if (textParts.length > 0) {
+          (textParts[0] as any).text = `<cognitive_state>\n${narrative}\n</cognitive_state>\n\n${(textParts[0] as any).text}`;
         }
       }
     },
