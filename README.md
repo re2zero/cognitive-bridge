@@ -90,22 +90,24 @@ cd ~/.omp/plugins && npm install @re2zero/cog
 ### opencode
 
 ```bash
-# 1. 安装到 opencode 插件目录
+# 推荐：使用 opencode 自带的插件安装命令
+opencode plugin @re2zero/cog
+
+# 全局安装（写入 ~/.config/opencode/opencode.jsonc）
 opencode plugin @re2zero/cog -g
 
-# 或手动
-
-cd ~/.config/opencode/plugins && npm install @re2zero/cog
-
-# 2. 启用插件
-# ~/.config/opencode/opencode.jsonc
-{
-  "plugin": ["@re2zero/cog"]
-}
-
-# 3. 重启 opencode，首次使用自动触发唤醒仪式
-opencode
+# 安装后重启 opencode，首次使用自动触发唤醒仪式
 ```
+
+安装命令会自动将插件加入配置文件的 `plugin` 列表，无需手动编辑。
+
+> **注意**：不要用 `npm install` 手动安装到 `~/.opencode/node_modules/`。
+> opencode 使用 bun 管理插件缓存（位于 `~/.cache/opencode/packages/`），
+> 必须通过 `opencode plugin` 命令安装才能正确加载。
+> 手动 npm install 不会被 opencode 识别，且旧版本缓存可能导致
+> "Plugin export is not a function" 错误。
+> 如遇此错误，清除缓存后重新安装：
+> `rm -rf ~/.cache/opencode/packages/@re2zero/cog && opencode plugin @re2zero/cog@latest`
 
 ## 使用
 
@@ -265,12 +267,14 @@ turn_end 钩子
 ```
 cog/
 ├── src/
-│   ├── index.ts           # 插件入口（pi + opencode 导出）
+│   ├── index.ts           # 主入口（autoInit 环境检测 + pi 扩展工厂）
+│   ├── opencode-entry.ts  # opencode 专用入口（仅 default 导出）
 │   ├── core.ts            # 核心逻辑（平台无关）
 │   ├── memory.ts          # 记忆系统（SQLite + FTS5）
 │   ├── types.ts           # 共享类型定义
 │   ├── storage.ts         # persona 持久化 + 词典加载
 │   ├── mood.ts            # /mood 命令报告生成
+│   ├── singleton.ts       # 单例管理（防止 OMP 双重加载）
 │   ├── cli.ts             # CLI 工具入口
 │   └── adapters/
 │       ├── pi.ts          # pi ExtensionAPI 适配（omp 兼容）
