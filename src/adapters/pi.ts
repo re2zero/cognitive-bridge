@@ -441,9 +441,11 @@ export function registerPiExtension(pi: PiExtensionAPI, bridge: CognitiveBridge)
       ret.systemPrompt = identityBlock + '\n\n' + (event.systemPrompt || '');
     }
 
-    // NAP 锚点（动态，通过 context 钩子注入到用户消息）
-    if (bridge.currentState.cycle > 0) {
+    // NAP 锚点（条件注入，KV 缓存友好）
+    // 只在状态有意义变化时注入，避免重复 token
+    if (bridge.currentState.cycle > 0 && bridge.shouldInjectNarrative()) {
       const narrative = bridge.generateNarrative();
+      bridge.markNarrativeInjected();
       (pi as any)._cogPendingAnchor = narrative;
     }
 

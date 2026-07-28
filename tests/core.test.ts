@@ -207,6 +207,68 @@ describe('advanceState', () => {
   });
 });
 
+// ── 叙事注入控制 ──
+
+describe('shouldInjectNarrative', () => {
+  let bridge: CognitiveBridge;
+
+  beforeEach(() => {
+    bridge = createBridge();
+  });
+
+  it('首次调用返回 true', () => {
+    expect(bridge.shouldInjectNarrative()).toBe(true);
+  });
+
+  it('状态无变化时返回 false', () => {
+    bridge.markNarrativeInjected();
+    expect(bridge.shouldInjectNarrative()).toBe(false);
+  });
+
+  it('emotion 变化超过阈值时返回 true', () => {
+    bridge.markNarrativeInjected();
+    bridge.advanceState({ emotion: 0.8, intensity: 0.9, keywords: ['太棒了'] });
+    expect(bridge.shouldInjectNarrative()).toBe(true);
+  });
+
+  it('emotion 微小变化时返回 false', () => {
+    bridge.markNarrativeInjected();
+    bridge.advanceState({ emotion: 0.05, intensity: 0.1, keywords: [] });
+    expect(bridge.shouldInjectNarrative()).toBe(false);
+  });
+  it('连续注入后缓存更新', () => {
+    bridge.markNarrativeInjected();
+    bridge.advanceState({ emotion: 0.8, intensity: 0.9, keywords: ['太棒了'] });
+    expect(bridge.shouldInjectNarrative()).toBe(true);
+
+    bridge.markNarrativeInjected();
+    expect(bridge.shouldInjectNarrative()).toBe(false);
+  });
+
+  it('连续注入后缓存更新', () => {
+    bridge.markNarrativeInjected();
+    bridge.advanceState({ emotion: 0.8, intensity: 0.9, keywords: ['太棒了'] });
+    expect(bridge.shouldInjectNarrative()).toBe(true);
+
+    bridge.markNarrativeInjected();
+    expect(bridge.shouldInjectNarrative()).toBe(false);
+  });
+
+  it('超过最大间隔轮次时强制注入', () => {
+    bridge.markNarrativeInjected();
+
+    // 推进 4 轮（未达间隔），使用极低强度避免触发阈值
+    for (let i = 0; i < 4; i++) {
+      bridge.advanceState({ emotion: 0, intensity: 0, keywords: [] });
+      expect(bridge.shouldInjectNarrative()).toBe(false);
+    }
+
+    // 第 5 轮（达到间隔），即使状态无变化也应注入
+    bridge.advanceState({ emotion: 0, intensity: 0, keywords: [] });
+    expect(bridge.shouldInjectNarrative()).toBe(true);
+  });
+});
+
 // ── NAP 锚点生成 ──
 
 describe('generateNarrative', () => {

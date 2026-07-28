@@ -339,8 +339,6 @@ export const CogPlugin: Plugin = async (ctx) => {
       const feedback = bridge.detectFeedback(text);
       bridge.advanceState(signal, feedback);
 
-      // 生成叙事锚点
-      const narrative = bridge.generateNarrative();
 
       // 身份注入（系统提示词，静态）
       const layer = bridge.currentState.cycle <= 1 ? 'full' : 'core';
@@ -364,13 +362,19 @@ export const CogPlugin: Plugin = async (ctx) => {
         text: identityBlock
       } as any);
 
-      // 注入认知状态到用户消息（动态，KV 缓存友好）
-      // 注意：跳过刚 unshift 的 identityBlock，只包裹真正的用户消息
-      for (let i = 1; i < output.parts.length; i++) {
-        const p = output.parts[i];
-        if (p.type === 'text') {
-          (p as any).text = `<cognitive_state>\n${narrative}\n</cognitive_state>\n\n${(p as any).text}`;
-          break;
+      // 注入认知状态到用户消息（条件注入，KV 缓存友好）
+      // 只在状态有意义变化时注入，避免重复 token
+      if (bridge.shouldInjectNarrative()) {
+        const narrative = bridge.generateNarrative();
+        bridge.markNarrativeInjected();
+
+        // 跳过刚 unshift 的 identityBlock，只包裹真正的用户消息
+        for (let i = 1; i < output.parts.length; i++) {
+          const p = output.parts[i];
+          if (p.type === 'text') {
+            (p as any).text = `<cognitive_state>\n${narrative}\n</cognitive_state>\n\n${(p as any).text}`;
+            break;
+          }
         }
       }
     },

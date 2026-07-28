@@ -123,6 +123,19 @@ export class CognitiveBridge {
   private taskProgress: { current: number; total: number; description: string } | null = null;
   private window: WindowEntry[] = [];
 
+  // ── 叙事注入缓存 ──
+
+  private lastInjectedState: { emotion: number; arousal: number; confidence: number } | null = null;
+  private lastInjectedCycle: number = 0;
+
+  // 叙事注入阈值：低于此变化不注入，节省 token
+  private readonly NARRATIVE_THRESHOLD = {
+    emotion: 0.15,
+    confidence: 0.2
+  };
+
+  // 最大注入间隔：即使状态无变化，超过此轮次也强制注入
+  private readonly NARRATIVE_MAX_INTERVAL = 5;
   // ── 记忆系统 ──
 
   private memoryStore: MemoryStore;
@@ -416,6 +429,42 @@ export class CognitiveBridge {
       { range: [-0.7, -0.2], template: "有些事情不太顺利，我需要理清楚。第{cycle}轮，有点困扰。" },
       { range: [-1.1, -0.7], template: "压力很大，我感到有点失控。第{cycle}轮，需要调整。" }
     ];
+  }
+
+  // ── 叙事注入控制 ──
+
+  /**
+   * 检查是否应该注入叙事锚点。
+   * 条件：状态有意义变化，或超过最大间隔轮次。
+   */
+  shouldInjectNarrative(): boolean {
+    const current = this.cognitiveState;
+    const last = this.lastInjectedState;
+
+    // 首次注入
+    if (!last) return true;
+
+    // 超过最大间隔，强制注入（保持情感连续性）
+    const roundsSinceLast = current.cycle - this.lastInjectedCycle;
+    if (roundsSinceLast >= this.NARRATIVE_MAX_INTERVAL) return true;
+
+    // 状态有意义变化（只检查 emotion 和 confidence，arousal 每轮都会衰减）
+    const emotionChanged = Math.abs(current.emotion - last.emotion) > this.NARRATIVE_THRESHOLD.emotion;
+    const confidenceChanged = Math.abs(current.confidence - last.confidence) > this.NARRATIVE_THRESHOLD.confidence;
+
+    return emotionChanged || confidenceChanged;
+  }
+
+  /**
+   * 标记叙事已注入，缓存当前状态和轮次。
+   */
+  markNarrativeInjected(): void {
+    this.lastInjectedState = {
+      emotion: this.cognitiveState.emotion,
+      arousal: this.cognitiveState.arousal,
+      confidence: this.cognitiveState.confidence
+    };
+    this.lastInjectedCycle = this.cognitiveState.cycle;
   }
 
   // ── 仪式流程 ──
